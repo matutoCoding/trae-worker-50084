@@ -134,6 +134,27 @@ export interface EnvMonitoring {
   location: string;
   status: 'normal' | 'warning' | 'exceeded';
   deviceId: string;
+  handled?: boolean;
+  handledAt?: string;
+  handledBy?: string;
+}
+
+export interface TreatmentRecord {
+  id: string;
+  date: string;
+  inflow: number;
+  outflow: number;
+  processingRate: number;
+  codBefore: number;
+  codAfter: number;
+  oilBefore: number;
+  oilAfter: number;
+  ssBefore: number;
+  ssAfter: number;
+  status: 'normal' | 'warning';
+  operator: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type NavItem = {

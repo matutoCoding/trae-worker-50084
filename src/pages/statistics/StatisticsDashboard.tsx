@@ -16,6 +16,9 @@ import {
   CheckCircle2,
   Clock,
   Users,
+  Filter,
+  X,
+  Eye,
 } from 'lucide-react';
 import { useShipStore } from '../../store/useShipStore';
 import { usePlanStore } from '../../store/usePlanStore';
@@ -25,8 +28,9 @@ import { StatCard } from '../../components/ui/StatCard';
 import { LineChartCard } from '../../components/charts/LineChartCard';
 import { BarChartCard } from '../../components/charts/BarChartCard';
 import { TabNavigation } from '../../components/ui/TabNavigation';
-import { TabItem } from '../../types';
-import { formatCurrency, formatWeight, getMaterialCategoryText, getWasteTypeText } from '../../utils/format';
+import { Modal } from '../../components/ui/Modal';
+import { TabItem, Sale } from '../../types';
+import { formatCurrency, formatWeight, getMaterialCategoryText, getWasteTypeText, getStatusText } from '../../utils/format';
 
 const tabs: TabItem[] = [
   { key: 'overview', label: '综合概览' },
@@ -41,6 +45,13 @@ export const StatisticsDashboard: React.FC = () => {
   const { wastes, getWasteStats } = useHazmatStore();
   const [activeTab, setActiveTab] = useState('overview');
   const [timeRange, setTimeRange] = useState('month');
+  const [salesTimeRange, setSalesTimeRange] = useState('month');
+  const [selectedCustomer, setSelectedCustomer] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const inventoryStats = useMemo(() => getInventoryStats(), [getInventoryStats]);
   const salesStats = useMemo(() => getSalesStats(), [getSalesStats]);
@@ -130,6 +141,118 @@ export const StatisticsDashboard: React.FC = () => {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 5);
   }, [ships]);
+
+  const materialCategories = useMemo(() => {
+    const categories = new Set(materials.map(m => m.category));
+    return Array.from(categories).map(cat => ({
+      value: cat,
+      label: getMaterialCategoryText(cat),
+    }));
+  }, [materials]);
+
+  const customerList = useMemo(() => {
+    const customers = new Set(sales.map(s => s.customer));
+    return Array.from(customers).map(customer => ({
+      value: customer,
+      label: customer,
+    }));
+  }, [sales]);
+
+  const getDateRange = (range: string): { start: Date; end: Date } => {
+    const now = new Date();
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    let start = new Date();
+
+    switch (range) {
+      case 'week':
+        const dayOfWeek = now.getDay() || 7;
+        start = new Date(now);
+        start.setDate(now.getDate() - dayOfWeek + 1);
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'month':
+        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        break;
+      case 'quarter':
+        const quarter = Math.floor(now.getMonth() / 3);
+        start = new Date(now.getFullYear(), quarter * 3, 1, 0, 0, 0, 0);
+        break;
+      case 'year':
+        start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        break;
+      case 'custom':
+        if (customStartDate && customEndDate) {
+          start = new Date(customStartDate);
+          start.setHours(0, 0, 0, 0);
+          const customEnd = new Date(customEndDate);
+          customEnd.setHours(23, 59, 59, 999);
+          return { start, end: customEnd };
+        }
+        break;
+    }
+    return { start, end };
+  };
+
+  const filteredSales = useMemo(() => {
+    let result = sales.filter(s => s.status !== 'cancelled');
+
+    const { start, end } = getDateRange(salesTimeRange);
+    result = result.filter(s => {
+      const saleDate = new Date(s.saleDate);
+      return saleDate >= start && saleDate <= end;
+    });
+
+    if (selectedCustomer) {
+      result = result.filter(s => s.customer === selectedCustomer);
+    }
+
+    if (selectedCategory) {
+      const categoryMaterials = materials.filter(m => m.category === selectedCategory).map(m => m.id);
+      result = result.filter(s => categoryMaterials.includes(s.materialId));
+    }
+
+    return result;
+  }, [sales, salesTimeRange, selectedCustomer, selectedCategory, materials, customStartDate, customEndDate]);
+
+  const filteredSalesStats = useMemo(() => {
+    const totalRevenue = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
+
+    const byCustomer: Record<string, number> = {};
+    filteredSales.forEach(s => {
+      byCustomer[s.customer] = (byCustomer[s.customer] || 0) + s.totalAmount;
+    });
+
+    const topCustomers = Object.entries(byCustomer)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
+    return {
+      totalRevenue,
+      byCustomer,
+      topCustomers,
+      orderCount: filteredSales.length,
+      customerCount: Object.keys(byCustomer).length,
+    };
+  }, [filteredSales]);
+
+  const handleViewSaleDetail = (sale: Sale) => {
+    setSelectedSale(sale);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedSale(null);
+  };
+
+  const handleResetFilters = () => {
+    setSalesTimeRange('month');
+    setSelectedCustomer('');
+    setSelectedCategory('');
+    setCustomStartDate('');
+    setCustomEndDate('');
+  };
 
   return (
     <div className="space-y-6">
@@ -416,21 +539,104 @@ export const StatisticsDashboard: React.FC = () => {
 
       {activeTab === 'sales' && (
         <div className="space-y-6">
+          <div className="industrial-card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-slate-400 flex items-center gap-2">
+                <Filter className="w-4 h-4" />
+                筛选条件
+              </h3>
+              <button
+                onClick={handleResetFilters}
+                className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1 transition-colors"
+              >
+                <X className="w-3 h-3" />
+                重置筛选
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">时间范围</label>
+                <select
+                  value={salesTimeRange}
+                  onChange={(e) => setSalesTimeRange(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                >
+                  <option value="week">本周</option>
+                  <option value="month">本月</option>
+                  <option value="quarter">本季</option>
+                  <option value="year">本年</option>
+                  <option value="custom">自定义</option>
+                </select>
+              </div>
+              {salesTimeRange === 'custom' && (
+                <>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-2">开始日期</label>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-2">结束日期</label>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                    />
+                  </div>
+                </>
+              )}
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">客户</label>
+                <select
+                  value={selectedCustomer}
+                  onChange={(e) => setSelectedCustomer(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                >
+                  <option value="">全部客户</option>
+                  {customerList.map(customer => (
+                    <option key={customer.value} value={customer.value}>
+                      {customer.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">物料类别</label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                >
+                  <option value="">全部类别</option>
+                  {materialCategories.map(cat => (
+                    <option key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="industrial-card p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-400">本月销售额</p>
+                  <p className="text-sm text-slate-400">筛选后销售额</p>
                   <p className="text-2xl font-bold text-success-400 mt-1">
-                    {(salesStats.thisMonthRevenue / 10000).toFixed(0)} 万
+                    {(filteredSalesStats.totalRevenue / 10000).toFixed(0)} 万
                   </p>
-                  <p className="text-xs text-success-400 mt-1 flex items-center gap-1">
-                    <ArrowUpRight className="w-3 h-3" />
-                    +23.5% 同比
+                  <p className="text-xs text-slate-400 mt-1">
+                    共 {filteredSalesStats.orderCount} 笔订单
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-success-500/20 rounded-lg flex items-center justify-center">
-                  <TrendingUp className="w-6 h-6 text-success-400" />
+                  <DollarSign className="w-6 h-6 text-success-400" />
                 </div>
               </div>
             </div>
@@ -455,10 +661,9 @@ export const StatisticsDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-400">订单数量</p>
-                  <p className="text-2xl font-bold text-warning-400 mt-1">{sales.length}</p>
-                  <p className="text-xs text-success-400 mt-1 flex items-center gap-1">
-                    <ArrowUpRight className="w-3 h-3" />
-                    +5 新增
+                  <p className="text-2xl font-bold text-warning-400 mt-1">{filteredSalesStats.orderCount}</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    筛选范围内
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-warning-500/20 rounded-lg flex items-center justify-center">
@@ -471,7 +676,7 @@ export const StatisticsDashboard: React.FC = () => {
                 <div>
                   <p className="text-sm text-slate-400">合作客户</p>
                   <p className="text-2xl font-bold text-slate-200 mt-1">
-                    {Object.keys(salesStats.byCustomer).length}
+                    {filteredSalesStats.customerCount}
                   </p>
                   <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
                     <Users className="w-3 h-3" />
@@ -486,11 +691,11 @@ export const StatisticsDashboard: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <LineChartCard
-              title="月度销售额趋势"
-              data={salesTrendData.map(d => ({ ...d, value: d.value / 10000 }))}
-              color="#10b981"
+            <BarChartCard
+              title="客户销售排行"
+              data={filteredSalesStats.topCustomers.map(d => ({ ...d, value: d.value / 10000 }))}
               unit="万元"
+              horizontal
             />
             <BarChartCard
               title="物料类别销售占比"
@@ -520,42 +725,160 @@ export const StatisticsDashboard: React.FC = () => {
                     <th className="text-left py-3 px-4 text-sm font-medium text-slate-400">单价</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-slate-400">总金额</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-slate-400">销售日期</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-400">发票号</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-slate-400">状态</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-400">操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sales.map(sale => (
-                    <tr key={sale.id} className="border-b border-slate-700/30 hover:bg-slate-800/30">
-                      <td className="py-3 px-4">
-                        <span className="font-medium text-slate-200">{sale.materialName}</span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-300">{sale.customer}</td>
-                      <td className="py-3 px-4 text-slate-300">{formatWeight(sale.quantity, 't')}</td>
-                      <td className="py-3 px-4 text-slate-300">{formatCurrency(sale.unitPrice)}/t</td>
-                      <td className="py-3 px-4 text-success-400 font-medium">{formatCurrency(sale.totalAmount)}</td>
-                      <td className="py-3 px-4 text-slate-300">{sale.saleDate}</td>
-                      <td className="py-3 px-4 text-slate-400 font-mono">{sale.invoiceNumber || '-'}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 text-xs rounded ${
-                          sale.status === 'completed' ? 'bg-success-500/20 text-success-400' :
-                          sale.status === 'shipped' ? 'bg-primary-500/20 text-primary-400' :
-                          sale.status === 'cancelled' ? 'bg-danger-500/20 text-danger-400' :
-                          'bg-warning-500/20 text-warning-400'
-                        }`}>
-                          {sale.status === 'completed' ? '已完成' :
-                           sale.status === 'shipped' ? '已出库' :
-                           sale.status === 'cancelled' ? '已取消' : '待确认'}
-                        </span>
+                  {filteredSales.length > 0 ? (
+                    filteredSales.map(sale => (
+                      <tr key={sale.id} className="border-b border-slate-700/30 hover:bg-slate-800/30">
+                        <td className="py-3 px-4">
+                          <span className="font-medium text-slate-200">{sale.materialName}</span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-300">{sale.customer}</td>
+                        <td className="py-3 px-4 text-slate-300">{formatWeight(sale.quantity, 't')}</td>
+                        <td className="py-3 px-4 text-slate-300">{formatCurrency(sale.unitPrice)}/t</td>
+                        <td className="py-3 px-4 text-success-400 font-medium">{formatCurrency(sale.totalAmount)}</td>
+                        <td className="py-3 px-4 text-slate-300">{sale.saleDate}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 text-xs rounded ${
+                            sale.status === 'completed' ? 'bg-success-500/20 text-success-400' :
+                            sale.status === 'shipped' ? 'bg-primary-500/20 text-primary-400' :
+                            sale.status === 'cancelled' ? 'bg-danger-500/20 text-danger-400' :
+                            'bg-warning-500/20 text-warning-400'
+                          }`}>
+                            {getStatusText(sale.status)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <button
+                            onClick={() => handleViewSaleDetail(sale)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-primary-400 bg-primary-500/10 rounded-lg hover:bg-primary-500/20 transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            查看详情
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-slate-500">
+                        暂无符合筛选条件的销售数据
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        title="销售单详情"
+        width="max-w-3xl"
+        footer={
+          <button
+            onClick={handleCloseModal}
+            className="px-4 py-2 bg-slate-700 text-slate-200 rounded-lg hover:bg-slate-600 transition-colors"
+          >
+            关闭
+          </button>
+        }
+      >
+        {selectedSale && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-slate-800/30 rounded-lg p-4">
+                <p className="text-xs text-slate-500 mb-1">销售单号</p>
+                <p className="text-lg font-semibold text-slate-200 font-mono">{selectedSale.id}</p>
+              </div>
+              <div className="bg-slate-800/30 rounded-lg p-4">
+                <p className="text-xs text-slate-500 mb-1">状态</p>
+                <span className={`inline-block px-3 py-1 text-sm rounded ${
+                  selectedSale.status === 'completed' ? 'bg-success-500/20 text-success-400' :
+                  selectedSale.status === 'shipped' ? 'bg-primary-500/20 text-primary-400' :
+                  selectedSale.status === 'cancelled' ? 'bg-danger-500/20 text-danger-400' :
+                  'bg-warning-500/20 text-warning-400'
+                }`}>
+                  {getStatusText(selectedSale.status)}
+                </span>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-700/50 pt-4">
+              <h4 className="text-sm font-medium text-slate-400 mb-4">基本信息</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">物料名称</p>
+                  <p className="text-slate-200">{selectedSale.materialName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">物料ID</p>
+                  <p className="text-slate-200 font-mono">{selectedSale.materialId}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">客户名称</p>
+                  <p className="text-slate-200">{selectedSale.customer}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">销售日期</p>
+                  <p className="text-slate-200">{selectedSale.saleDate}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-700/50 pt-4">
+              <h4 className="text-sm font-medium text-slate-400 mb-4">数量与金额</h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-slate-800/30 rounded-lg p-4 text-center">
+                  <p className="text-xs text-slate-500 mb-1">销售数量</p>
+                  <p className="text-xl font-bold text-slate-200">{formatWeight(selectedSale.quantity, 't')}</p>
+                </div>
+                <div className="bg-slate-800/30 rounded-lg p-4 text-center">
+                  <p className="text-xs text-slate-500 mb-1">单价</p>
+                  <p className="text-xl font-bold text-slate-200">{formatCurrency(selectedSale.unitPrice)}/t</p>
+                </div>
+                <div className="bg-success-500/10 rounded-lg p-4 text-center">
+                  <p className="text-xs text-slate-500 mb-1">总金额</p>
+                  <p className="text-xl font-bold text-success-400">{formatCurrency(selectedSale.totalAmount)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-700/50 pt-4">
+              <h4 className="text-sm font-medium text-slate-400 mb-4">发票信息</h4>
+              <div>
+                <p className="text-xs text-slate-500 mb-1">发票号</p>
+                <p className="text-slate-200 font-mono">{selectedSale.invoiceNumber || '未开具'}</p>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-700/50 pt-4">
+              <h4 className="text-sm font-medium text-slate-400 mb-4">金额明细</h4>
+              <div className="bg-slate-800/30 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">销售数量</span>
+                  <span className="text-slate-200">{selectedSale.quantity} t</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">单价</span>
+                  <span className="text-slate-200">{formatCurrency(selectedSale.unitPrice)}/t</span>
+                </div>
+                <div className="border-t border-slate-700/50 my-2"></div>
+                <div className="flex justify-between">
+                  <span className="text-slate-300 font-medium">合计金额</span>
+                  <span className="text-success-400 font-bold text-lg">{formatCurrency(selectedSale.totalAmount)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

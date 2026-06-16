@@ -17,7 +17,7 @@ const navItems = [
   { key: 'hazmat', label: '危废处置', icon: Biohazard, path: '/hazmat' },
   { key: 'materials', label: '物料回收', icon: Package, path: '/materials' },
   { key: 'safety', label: '安全作业', icon: ShieldAlert, path: '/safety' },
-  { key: 'environment', label: '环保监测', icon: Leaf, path: '/environment' },
+  { key: 'environment', label: '环保监测', icon: Leaf, path: '/env' },
   { key: 'statistics', label: '产销统计', icon: BarChart3, path: '/statistics' },
 ];
 
@@ -25,7 +25,7 @@ export const Sidebar: React.FC = () => {
   const location = useLocation();
 
   const isActive = (path: string) => {
-    return location.pathname.startsWith(path);
+    return location.pathname === path;
   };
 
   return (

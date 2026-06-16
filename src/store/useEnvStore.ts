@@ -1,13 +1,15 @@
 import { create } from 'zustand';
-import { EnvMonitoring } from '../types';
-import { mockEnvMonitoring, getCurrentEnvData } from '../data/mockEnv';
+import { EnvMonitoring, TreatmentRecord } from '../types';
+import { mockEnvMonitoring, getCurrentEnvData, mockTreatmentRecords } from '../data/mockEnv';
 import { getStorage, setStorage } from '../utils/storage';
 import { generateId } from '../utils/format';
 
 interface EnvStore {
   monitorings: EnvMonitoring[];
+  treatmentRecords: TreatmentRecord[];
   currentData: ReturnType<typeof getCurrentEnvData>;
   fetchMonitorings: () => void;
+  fetchTreatmentRecords: () => void;
   refreshCurrentData: () => void;
   getMonitoringsByType: (type: EnvMonitoring['type']) => EnvMonitoring[];
   getMonitoringsByLocation: (location: string) => EnvMonitoring[];
@@ -19,15 +21,25 @@ interface EnvStore {
     waterAvg: number;
     alertCount: number;
   };
+  markAlertHandled: (id: string, handledBy?: string) => void;
+  addTreatmentRecord: (record: Omit<TreatmentRecord, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateTreatmentRecord: (id: string, record: Partial<TreatmentRecord>) => void;
+  deleteTreatmentRecord: (id: string) => void;
 }
 
 export const useEnvStore = create<EnvStore>((set, get) => ({
   monitorings: getStorage('envMonitorings', mockEnvMonitoring),
+  treatmentRecords: getStorage('treatmentRecords', mockTreatmentRecords),
   currentData: getCurrentEnvData(),
 
   fetchMonitorings: () => {
     const monitorings = getStorage('envMonitorings', mockEnvMonitoring);
     set({ monitorings });
+  },
+
+  fetchTreatmentRecords: () => {
+    const treatmentRecords = getStorage('treatmentRecords', mockTreatmentRecords);
+    set({ treatmentRecords });
   },
 
   refreshCurrentData: () => {
@@ -53,7 +65,13 @@ export const useEnvStore = create<EnvStore>((set, get) => ({
   },
 
   getAlerts: () => {
-    return get().monitorings.filter(m => m.status === 'exceeded' || m.status === 'warning');
+    return get().monitorings
+      .filter(m => m.status === 'exceeded' || m.status === 'warning')
+      .sort((a, b) => {
+        if (a.handled && !b.handled) return 1;
+        if (!a.handled && b.handled) return -1;
+        return new Date(b.monitorTime).getTime() - new Date(a.monitorTime).getTime();
+      });
   },
 
   getEnvStats: () => {
@@ -77,5 +95,46 @@ export const useEnvStore = create<EnvStore>((set, get) => ({
     const alertCount = monitorings.filter(m => m.status !== 'normal').length;
 
     return { dustAvg, noiseAvg, waterAvg, alertCount };
+  },
+
+  markAlertHandled: (id, handledBy = '管理员') => {
+    const now = new Date().toISOString().replace('T', ' ').substr(0, 19);
+    const monitorings = get().monitorings.map(m =>
+      m.id === id
+        ? { ...m, handled: true, handledAt: now, handledBy }
+        : m
+    );
+    set({ monitorings });
+    setStorage('envMonitorings', monitorings);
+  },
+
+  addTreatmentRecord: (recordData) => {
+    const now = new Date().toISOString().replace('T', ' ').substr(0, 19);
+    const newRecord: TreatmentRecord = {
+      ...recordData,
+      id: generateId(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const treatmentRecords = [newRecord, ...get().treatmentRecords];
+    set({ treatmentRecords });
+    setStorage('treatmentRecords', treatmentRecords);
+  },
+
+  updateTreatmentRecord: (id, recordData) => {
+    const now = new Date().toISOString().replace('T', ' ').substr(0, 19);
+    const treatmentRecords = get().treatmentRecords.map(r =>
+      r.id === id
+        ? { ...r, ...recordData, updatedAt: now }
+        : r
+    );
+    set({ treatmentRecords });
+    setStorage('treatmentRecords', treatmentRecords);
+  },
+
+  deleteTreatmentRecord: (id) => {
+    const treatmentRecords = get().treatmentRecords.filter(r => r.id !== id);
+    set({ treatmentRecords });
+    setStorage('treatmentRecords', treatmentRecords);
   },
 }));

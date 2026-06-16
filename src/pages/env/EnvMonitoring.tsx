@@ -15,8 +15,12 @@ import {
   XCircle,
   RefreshCw,
   Filter,
+  Edit,
+  Plus,
+  Check,
+  X,
 } from 'lucide-react';
-import { EnvMonitoring as EnvMonitoringRecord, TabItem } from '../../types';
+import { EnvMonitoring as EnvMonitoringRecord, TreatmentRecord, TabItem } from '../../types';
 import { useEnvStore } from '../../store/useEnvStore';
 import { StatCard } from '../../components/ui/StatCard';
 import { TabNavigation } from '../../components/ui/TabNavigation';
@@ -25,6 +29,7 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { LineChartCard } from '../../components/charts/LineChartCard';
 import { BarChartCard } from '../../components/charts/BarChartCard';
 import { GaugeChart } from '../../components/charts/GaugeChart';
+import { Modal } from '../../components/ui/Modal';
 import { formatDate, formatNumber } from '../../utils/format';
 
 const tabs: TabItem[] = [
@@ -48,29 +53,57 @@ const statusOptions = [
   { value: 'exceeded', label: '超标' },
 ];
 
-interface TreatmentRecord {
-  id: string;
+interface TreatmentFormData {
   date: string;
-  inflow: number;
-  outflow: number;
-  processingRate: number;
-  codBefore: number;
-  codAfter: number;
-  oilBefore: number;
-  oilAfter: number;
-  ssBefore: number;
-  ssAfter: number;
-  status: 'normal' | 'warning';
+  inflow: string;
+  outflow: string;
+  codBefore: string;
+  codAfter: string;
+  oilBefore: string;
+  oilAfter: string;
+  ssBefore: string;
+  ssAfter: string;
   operator: string;
 }
 
+const initialFormData: TreatmentFormData = {
+  date: new Date().toISOString().split('T')[0],
+  inflow: '',
+  outflow: '',
+  codBefore: '',
+  codAfter: '',
+  oilBefore: '',
+  oilAfter: '',
+  ssBefore: '',
+  ssAfter: '',
+  operator: '',
+};
+
 export const EnvMonitoring: React.FC = () => {
-  const { monitorings, currentData, fetchMonitorings, refreshCurrentData, getAlerts } = useEnvStore();
+  const {
+    monitorings,
+    treatmentRecords,
+    currentData,
+    fetchMonitorings,
+    refreshCurrentData,
+    getAlerts,
+    markAlertHandled,
+    addTreatmentRecord,
+    updateTreatmentRecord,
+  } = useEnvStore();
+
   const [activeTab, setActiveTab] = useState('realtime');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
+
+  const [alertModalOpen, setAlertModalOpen] = useState(false);
+  const [selectedAlert, setSelectedAlert] = useState<EnvMonitoringRecord | null>(null);
+
+  const [treatmentModalOpen, setTreatmentModalOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<TreatmentRecord | null>(null);
+  const [formData, setFormData] = useState<TreatmentFormData>(initialFormData);
 
   const stats = useMemo(() => {
     const locations = new Set(monitorings.map(m => m.location));
@@ -119,85 +152,130 @@ export const EnvMonitoring: React.FC = () => {
     return filteredMonitorings.slice(start, start + pageSize);
   }, [filteredMonitorings, page]);
 
-  const treatmentRecords = useMemo<TreatmentRecord[]>(() => {
-    return [
-      {
-        id: 'treat-001',
-        date: '2026-06-17',
-        inflow: 25.5,
-        outflow: 24.8,
-        processingRate: 97.3,
-        codBefore: 420,
-        codAfter: 42.5,
-        oilBefore: 35.2,
-        oilAfter: 3.2,
-        ssBefore: 280,
-        ssAfter: 28.6,
-        status: 'normal',
-        operator: '张三',
-      },
-      {
-        id: 'treat-002',
-        date: '2026-06-16',
-        inflow: 28.2,
-        outflow: 27.5,
-        processingRate: 97.5,
-        codBefore: 380,
-        codAfter: 38.2,
-        oilBefore: 32.5,
-        oilAfter: 2.8,
-        ssBefore: 260,
-        ssAfter: 25.3,
-        status: 'normal',
-        operator: '李四',
-      },
-      {
-        id: 'treat-003',
-        date: '2026-06-15',
-        inflow: 32.1,
-        outflow: 31.2,
-        processingRate: 97.2,
-        codBefore: 450,
-        codAfter: 48.5,
-        oilBefore: 38.0,
-        oilAfter: 3.5,
-        ssBefore: 310,
-        ssAfter: 30.1,
-        status: 'normal',
-        operator: '张三',
-      },
-      {
-        id: 'treat-004',
-        date: '2026-06-14',
-        inflow: 26.8,
-        outflow: 25.9,
-        processingRate: 96.6,
-        codBefore: 520,
-        codAfter: 55.2,
-        oilBefore: 42.0,
-        oilAfter: 4.2,
-        ssBefore: 350,
-        ssAfter: 35.8,
-        status: 'warning',
-        operator: '王五',
-      },
-      {
-        id: 'treat-005',
-        date: '2026-06-13',
-        inflow: 24.5,
-        outflow: 23.8,
-        processingRate: 97.1,
-        codBefore: 360,
-        codAfter: 36.5,
-        oilBefore: 28.5,
-        oilAfter: 2.5,
-        ssBefore: 240,
-        ssAfter: 24.2,
-        status: 'normal',
-        operator: '李四',
-      },
-    ];
-  }, []);
+  const paginatedTreatmentRecords = useMemo(() => {
+    const pageSize = 10;
+    const start = (page - 1) * pageSize;
+    return treatmentRecords.slice(start, start + pageSize);
+  }, [treatmentRecords, page]);
+
+  const calculateProcessingRate = (inflow: number, outflow: number): number => {
+    if (inflow <= 0) return 0;
+    return Math.round((outflow / inflow) * 1000) / 10;
+  };
+
+  const calculateStatus = (codAfter: number, oilAfter: number, ssAfter: number): 'normal' | 'warning' => {
+    if (codAfter > 50 || oilAfter > 5 || ssAfter > 30) {
+      return 'warning';
+    }
+    return 'normal';
+  };
+
+  const computedFormValues = useMemo(() => {
+    const inflow = parseFloat(formData.inflow) || 0;
+    const outflow = parseFloat(formData.outflow) || 0;
+    const codAfter = parseFloat(formData.codAfter) || 0;
+    const oilAfter = parseFloat(formData.oilAfter) || 0;
+    const ssAfter = parseFloat(formData.ssAfter) || 0;
+
+    return {
+      processingRate: calculateProcessingRate(inflow, outflow),
+      status: calculateStatus(codAfter, oilAfter, ssAfter),
+    };
+  }, [formData]);
+
+  const recentDataForAlert = useMemo(() => {
+    if (!selectedAlert) return [];
+    return monitorings
+      .filter(m => m.type === selectedAlert.type && m.location === selectedAlert.location)
+      .sort((a, b) => new Date(b.monitorTime).getTime() - new Date(a.monitorTime).getTime())
+      .slice(0, 10);
+  }, [selectedAlert, monitorings]);
+
+  const handleAlertClick = (alert: EnvMonitoringRecord) => {
+    setSelectedAlert(alert);
+    setAlertModalOpen(true);
+  };
+
+  const handleMarkHandled = () => {
+    if (selectedAlert) {
+      markAlertHandled(selectedAlert.id);
+      setAlertModalOpen(false);
+      setSelectedAlert(null);
+    }
+  };
+
+  const handleAddRecord = () => {
+    setEditingRecord(null);
+    setFormData(initialFormData);
+    setTreatmentModalOpen(true);
+  };
+
+  const handleEditRecord = (record: TreatmentRecord) => {
+    setEditingRecord(record);
+    setFormData({
+      date: record.date,
+      inflow: record.inflow.toString(),
+      outflow: record.outflow.toString(),
+      codBefore: record.codBefore.toString(),
+      codAfter: record.codAfter.toString(),
+      oilBefore: record.oilBefore.toString(),
+      oilAfter: record.oilAfter.toString(),
+      ssBefore: record.ssBefore.toString(),
+      ssAfter: record.ssAfter.toString(),
+      operator: record.operator,
+    });
+    setTreatmentModalOpen(true);
+  };
+
+  const handleFormChange = (field: keyof TreatmentFormData, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveTreatment = () => {
+    const inflow = parseFloat(formData.inflow);
+    const outflow = parseFloat(formData.outflow);
+    const codBefore = parseFloat(formData.codBefore);
+    const codAfter = parseFloat(formData.codAfter);
+    const oilBefore = parseFloat(formData.oilBefore);
+    const oilAfter = parseFloat(formData.oilAfter);
+    const ssBefore = parseFloat(formData.ssBefore);
+    const ssAfter = parseFloat(formData.ssAfter);
+
+    if (isNaN(inflow) || isNaN(outflow) || isNaN(codBefore) || isNaN(codAfter) ||
+        isNaN(oilBefore) || isNaN(oilAfter) || isNaN(ssBefore) || isNaN(ssAfter) ||
+        !formData.date || !formData.operator) {
+      alert('请填写完整的表单数据');
+      return;
+    }
+
+    const processingRate = calculateProcessingRate(inflow, outflow);
+    const status = calculateStatus(codAfter, oilAfter, ssAfter);
+
+    const recordData = {
+      date: formData.date,
+      inflow,
+      outflow,
+      processingRate,
+      codBefore,
+      codAfter,
+      oilBefore,
+      oilAfter,
+      ssBefore,
+      ssAfter,
+      status,
+      operator: formData.operator,
+    };
+
+    if (editingRecord) {
+      updateTreatmentRecord(editingRecord.id, recordData);
+    } else {
+      addTreatmentRecord(recordData);
+    }
+
+    setTreatmentModalOpen(false);
+    setEditingRecord(null);
+    setFormData(initialFormData);
+  };
 
   const monitoringColumns = [
     {
@@ -350,6 +428,18 @@ export const EnvMonitoring: React.FC = () => {
             {r.status === 'normal' ? '达标' : '接近阈值'}
           </span>
         </div>
+      ),
+    },
+    {
+      key: 'actions',
+      title: '操作',
+      render: (r: TreatmentRecord) => (
+        <button
+          onClick={() => handleEditRecord(r)}
+          className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-primary-400 transition-colors"
+        >
+          <Edit className="w-4 h-4" />
+        </button>
       ),
     },
   ];
@@ -542,10 +632,13 @@ export const EnvMonitoring: React.FC = () => {
                 {alerts.slice(0, 10).map(alert => (
                   <div
                     key={alert.id}
-                    className={`flex items-center gap-4 p-3 rounded-lg border ${
-                      alert.status === 'exceeded'
-                        ? 'bg-danger-500/10 border-danger-500/30'
-                        : 'bg-warning-500/10 border-warning-500/30'
+                    onClick={() => handleAlertClick(alert)}
+                    className={`flex items-center gap-4 p-3 rounded-lg border cursor-pointer transition-all hover:scale-[1.01] ${
+                      alert.handled
+                        ? 'bg-slate-800/30 border-slate-700/30 opacity-60'
+                        : alert.status === 'exceeded'
+                          ? 'bg-danger-500/10 border-danger-500/30 hover:bg-danger-500/20'
+                          : 'bg-warning-500/10 border-warning-500/30 hover:bg-warning-500/20'
                     }`}
                   >
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
@@ -564,6 +657,11 @@ export const EnvMonitoring: React.FC = () => {
                            alert.type === 'water' ? '水质超标' : '空气质量异常'}
                         </span>
                         <StatusBadge status={alert.status} size="sm" />
+                        {alert.handled && (
+                          <span className="text-xs text-slate-500 bg-slate-700/50 px-2 py-0.5 rounded">
+                            已处理
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-slate-400">
                         {alert.location} - {formatNumber(alert.value)} {alert.unit}
@@ -686,6 +784,17 @@ export const EnvMonitoring: React.FC = () => {
 
       {activeTab === 'treatment' && (
         <>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-200">处理记录管理</h3>
+            <button
+              onClick={handleAddRecord}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              新增记录
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="industrial-card p-5">
               <div className="flex items-center justify-between mb-4">
@@ -840,7 +949,7 @@ export const EnvMonitoring: React.FC = () => {
       {activeTab === 'treatment' ? (
         <DataTable
           columns={treatmentColumns}
-          data={treatmentRecords}
+          data={paginatedTreatmentRecords}
           pagination={{
             current: page,
             pageSize: 10,
@@ -860,6 +969,318 @@ export const EnvMonitoring: React.FC = () => {
           }}
         />
       )}
+
+      <Modal
+        isOpen={alertModalOpen}
+        onClose={() => { setAlertModalOpen(false); setSelectedAlert(null); }}
+        title="告警详情"
+        width="max-w-3xl"
+        footer={
+          selectedAlert && !selectedAlert.handled ? (
+            <button
+              onClick={handleMarkHandled}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
+            >
+              <Check className="w-4 h-4" />
+              标记已处理
+            </button>
+          ) : null
+        }
+      >
+        {selectedAlert && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                <p className="text-sm text-slate-500 mb-1">监测点位</p>
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-primary-400" />
+                  <span className="text-lg font-medium text-slate-200">{selectedAlert.location}</span>
+                </div>
+              </div>
+              <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                <p className="text-sm text-slate-500 mb-1">监测指标</p>
+                <div className="flex items-center gap-2">
+                  {getMonitorTypeIcon(selectedAlert.type)}
+                  <span className="text-lg font-medium text-slate-200">
+                    {selectedAlert.type === 'dust' ? '扬尘' :
+                     selectedAlert.type === 'noise' ? '噪声' :
+                     selectedAlert.type === 'water' ? '水质' : '空气质量'}
+                  </span>
+                </div>
+              </div>
+              <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                <p className="text-sm text-slate-500 mb-1">当前值</p>
+                <p className={`text-2xl font-bold ${
+                  selectedAlert.status === 'exceeded' ? 'text-danger-400' :
+                  selectedAlert.status === 'warning' ? 'text-warning-400' : 'text-success-400'
+                }`}>
+                  {formatNumber(selectedAlert.value)} {selectedAlert.unit}
+                </p>
+              </div>
+              <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                <p className="text-sm text-slate-500 mb-1">阈值</p>
+                <p className="text-2xl font-bold text-slate-200">
+                  {selectedAlert.threshold} {selectedAlert.unit}
+                </p>
+              </div>
+              <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                <p className="text-sm text-slate-500 mb-1">告警时间</p>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-slate-400" />
+                  <span className="text-lg font-medium text-slate-200">
+                    {formatDate(selectedAlert.monitorTime)}
+                  </span>
+                </div>
+              </div>
+              <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                <p className="text-sm text-slate-500 mb-1">当前状态</p>
+                <StatusBadge status={selectedAlert.status} />
+                {selectedAlert.handled && (
+                  <p className="text-xs text-success-400 mt-2">
+                    已由 {selectedAlert.handledBy} 于 {formatDate(selectedAlert.handledAt || '')} 处理
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-lg font-semibold text-slate-200 mb-3">最近10次数据</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-700">
+                      <th className="text-left py-2 px-3 text-sm text-slate-400">序号</th>
+                      <th className="text-left py-2 px-3 text-sm text-slate-400">监测时间</th>
+                      <th className="text-right py-2 px-3 text-sm text-slate-400">监测值</th>
+                      <th className="text-right py-2 px-3 text-sm text-slate-400">状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentDataForAlert.map((data, index) => (
+                      <tr key={data.id} className="border-b border-slate-700/50 hover:bg-slate-800/30">
+                        <td className="py-2 px-3 text-sm text-slate-500">{index + 1}</td>
+                        <td className="py-2 px-3 text-sm text-slate-300">{formatDate(data.monitorTime)}</td>
+                        <td className={`py-2 px-3 text-sm text-right font-medium ${
+                          data.status === 'exceeded' ? 'text-danger-400' :
+                          data.status === 'warning' ? 'text-warning-400' : 'text-success-400'
+                        }`}>
+                          {formatNumber(data.value)} {data.unit}
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          <StatusBadge status={data.status} size="sm" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={treatmentModalOpen}
+        onClose={() => { setTreatmentModalOpen(false); setEditingRecord(null); }}
+        title={editingRecord ? '编辑处理记录' : '新增处理记录'}
+        width="max-w-4xl"
+        footer={
+          <>
+            <button
+              onClick={() => { setTreatmentModalOpen(false); setEditingRecord(null); }}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4" />
+              取消
+            </button>
+            <button
+              onClick={handleSaveTreatment}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
+            >
+              <Check className="w-4 h-4" />
+              保存
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">处理日期</label>
+              <input
+                type="date"
+                value={formData.date}
+                onChange={(e) => handleFormChange('date', e.target.value)}
+                className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">操作人员</label>
+              <input
+                type="text"
+                value={formData.operator}
+                onChange={(e) => handleFormChange('operator', e.target.value)}
+                placeholder="请输入操作人员姓名"
+                className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">进水量 (m³)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={formData.inflow}
+                onChange={(e) => handleFormChange('inflow', e.target.value)}
+                placeholder="请输入进水量"
+                className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">出水量 (m³)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={formData.outflow}
+                onChange={(e) => handleFormChange('outflow', e.target.value)}
+                placeholder="请输入出水量"
+                className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+          </div>
+
+          <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-400">自动计算处理率</span>
+              <span className="text-xl font-bold text-success-400">
+                {computedFormValues.processingRate.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold text-slate-200">水质指标 (mg/L)</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
+                <p className="text-sm font-medium text-slate-300 mb-3">COD</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">进水</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={formData.codBefore}
+                      onChange={(e) => handleFormChange('codBefore', e.target.value)}
+                      placeholder="进水COD"
+                      className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">出水</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={formData.codAfter}
+                      onChange={(e) => handleFormChange('codAfter', e.target.value)}
+                      placeholder="出水COD"
+                      className={`w-full px-3 py-2 border rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 text-sm ${
+                        parseFloat(formData.codAfter) > 50 ? 'bg-danger-500/10 border-danger-500/50' : 'bg-slate-800/50 border-slate-700'
+                      }`}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500">排放标准: ≤50 mg/L</p>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
+                <p className="text-sm font-medium text-slate-300 mb-3">石油类</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">进水</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={formData.oilBefore}
+                      onChange={(e) => handleFormChange('oilBefore', e.target.value)}
+                      placeholder="进水石油类"
+                      className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">出水</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={formData.oilAfter}
+                      onChange={(e) => handleFormChange('oilAfter', e.target.value)}
+                      placeholder="出水石油类"
+                      className={`w-full px-3 py-2 border rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 text-sm ${
+                        parseFloat(formData.oilAfter) > 5 ? 'bg-danger-500/10 border-danger-500/50' : 'bg-slate-800/50 border-slate-700'
+                      }`}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500">排放标准: ≤5 mg/L</p>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
+                <p className="text-sm font-medium text-slate-300 mb-3">SS</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">进水</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={formData.ssBefore}
+                      onChange={(e) => handleFormChange('ssBefore', e.target.value)}
+                      placeholder="进水SS"
+                      className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">出水</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={formData.ssAfter}
+                      onChange={(e) => handleFormChange('ssAfter', e.target.value)}
+                      placeholder="出水SS"
+                      className={`w-full px-3 py-2 border rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 text-sm ${
+                        parseFloat(formData.ssAfter) > 30 ? 'bg-danger-500/10 border-danger-500/50' : 'bg-slate-800/50 border-slate-700'
+                      }`}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500">排放标准: ≤30 mg/L</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className={`p-4 rounded-lg border ${
+            computedFormValues.status === 'normal'
+              ? 'bg-success-500/10 border-success-500/30'
+              : 'bg-warning-500/10 border-warning-500/30'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-300">达标状态</span>
+              <div className="flex items-center gap-2">
+                {computedFormValues.status === 'normal' ? (
+                  <CheckCircle className="w-5 h-5 text-success-400" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-warning-400" />
+                )}
+                <span className={`text-lg font-bold ${
+                  computedFormValues.status === 'normal' ? 'text-success-400' : 'text-warning-400'
+                }`}>
+                  {computedFormValues.status === 'normal' ? '达标' : '接近阈值'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
