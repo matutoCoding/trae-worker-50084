@@ -16,7 +16,7 @@ import {
   RefreshCw,
   Filter,
 } from 'lucide-react';
-import { EnvMonitoring as EnvMonitoringType, TabItem } from '../../types';
+import { EnvMonitoring as EnvMonitoringRecord, TabItem } from '../../types';
 import { useEnvStore } from '../../store/useEnvStore';
 import { StatCard } from '../../components/ui/StatCard';
 import { TabNavigation } from '../../components/ui/TabNavigation';
@@ -47,6 +47,22 @@ const statusOptions = [
   { value: 'warning', label: '预警' },
   { value: 'exceeded', label: '超标' },
 ];
+
+interface TreatmentRecord {
+  id: string;
+  date: string;
+  inflow: number;
+  outflow: number;
+  processingRate: number;
+  codBefore: number;
+  codAfter: number;
+  oilBefore: number;
+  oilAfter: number;
+  ssBefore: number;
+  ssAfter: number;
+  status: 'normal' | 'warning';
+  operator: string;
+}
 
 export const EnvMonitoring: React.FC = () => {
   const { monitorings, currentData, fetchMonitorings, refreshCurrentData, getAlerts } = useEnvStore();
@@ -103,7 +119,7 @@ export const EnvMonitoring: React.FC = () => {
     return filteredMonitorings.slice(start, start + pageSize);
   }, [filteredMonitorings, page]);
 
-  const treatmentRecords = useMemo(() => {
+  const treatmentRecords = useMemo<TreatmentRecord[]>(() => {
     return [
       {
         id: 'treat-001',
@@ -187,7 +203,7 @@ export const EnvMonitoring: React.FC = () => {
     {
       key: 'type',
       title: '监测类型',
-      render: (m: EnvMonitoringType) => (
+      render: (m: EnvMonitoringRecord) => (
         <div className="flex items-center gap-2">
           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
             m.type === 'dust' ? 'bg-warning-500/20 text-warning-400' :
@@ -211,7 +227,7 @@ export const EnvMonitoring: React.FC = () => {
     {
       key: 'location',
       title: '监测位置',
-      render: (m: EnvMonitoringType) => (
+      render: (m: EnvMonitoringRecord) => (
         <div className="flex items-center gap-1 text-sm text-slate-300">
           <MapPin className="w-3 h-3 text-slate-500" />
           {m.location}
@@ -221,7 +237,7 @@ export const EnvMonitoring: React.FC = () => {
     {
       key: 'value',
       title: '监测值',
-      render: (m: EnvMonitoringType) => (
+      render: (m: EnvMonitoringRecord) => (
         <div>
           <p className={`font-medium ${
             m.status === 'exceeded' ? 'text-danger-400' :
@@ -242,7 +258,7 @@ export const EnvMonitoring: React.FC = () => {
     {
       key: 'monitorTime',
       title: '监测时间',
-      render: (m: EnvMonitoringType) => (
+      render: (m: EnvMonitoringRecord) => (
         <div className="flex items-center gap-1 text-sm text-slate-300">
           <Clock className="w-3 h-3 text-slate-500" />
           {formatDate(m.monitorTime)}
@@ -252,7 +268,7 @@ export const EnvMonitoring: React.FC = () => {
     {
       key: 'status',
       title: '状态',
-      render: (m: EnvMonitoring) => <StatusBadge status={m.status} />,
+      render: (m: EnvMonitoringRecord) => <StatusBadge status={m.status} />,
     },
   ];
 
@@ -265,24 +281,24 @@ export const EnvMonitoring: React.FC = () => {
     {
       key: 'inflow',
       title: '进水量',
-      render: (r: any) => <span className="text-slate-200">{formatNumber(r.inflow)} m³</span>,
+      render: (r: TreatmentRecord) => <span className="text-slate-200">{formatNumber(r.inflow)} m³</span>,
     },
     {
       key: 'outflow',
       title: '出水量',
-      render: (r: any) => <span className="text-slate-200">{formatNumber(r.outflow)} m³</span>,
+      render: (r: TreatmentRecord) => <span className="text-slate-200">{formatNumber(r.outflow)} m³</span>,
     },
     {
       key: 'processingRate',
       title: '处理率',
-      render: (r: any) => (
+      render: (r: TreatmentRecord) => (
         <span className="text-success-400 font-medium">{formatNumber(r.processingRate)}%</span>
       ),
     },
     {
       key: 'cod',
       title: 'COD (mg/L)',
-      render: (r: any) => (
+      render: (r: TreatmentRecord) => (
         <div>
           <p className="text-slate-200">
             {r.codBefore} → <span className={r.codAfter > 50 ? 'text-danger-400' : 'text-success-400'}>{r.codAfter}</span>
@@ -294,7 +310,7 @@ export const EnvMonitoring: React.FC = () => {
     {
       key: 'oil',
       title: '石油类 (mg/L)',
-      render: (r: any) => (
+      render: (r: TreatmentRecord) => (
         <div>
           <p className="text-slate-200">
             {r.oilBefore} → <span className={r.oilAfter > 5 ? 'text-danger-400' : 'text-success-400'}>{r.oilAfter}</span>
@@ -306,7 +322,7 @@ export const EnvMonitoring: React.FC = () => {
     {
       key: 'ss',
       title: 'SS (mg/L)',
-      render: (r: any) => (
+      render: (r: TreatmentRecord) => (
         <div>
           <p className="text-slate-200">
             {r.ssBefore} → <span className={r.ssAfter > 30 ? 'text-danger-400' : 'text-success-400'}>{r.ssAfter}</span>
@@ -323,7 +339,7 @@ export const EnvMonitoring: React.FC = () => {
     {
       key: 'status',
       title: '达标状态',
-      render: (r: any) => (
+      render: (r: TreatmentRecord) => (
         <div className="flex items-center gap-1">
           {r.status === 'normal' ? (
             <CheckCircle className="w-4 h-4 text-success-400" />
@@ -407,28 +423,24 @@ export const EnvMonitoring: React.FC = () => {
           title="监测点数量"
           value={stats.totalPoints}
           icon={<MapPin className="w-6 h-6" />}
-          gradient="from-primary-500/20 to-primary-700/20"
           color="primary"
         />
         <StatCard
           title="正常运行"
           value={stats.normal}
           icon={<CheckCircle className="w-6 h-6" />}
-          gradient="from-success-500/20 to-success-700/20"
           color="success"
         />
         <StatCard
           title="预警数量"
           value={stats.warning}
           icon={<AlertTriangle className="w-6 h-6" />}
-          gradient="from-warning-500/20 to-warning-700/20"
           color="warning"
         />
         <StatCard
           title="超标数量"
           value={stats.exceeded}
           icon={<XCircle className="w-6 h-6" />}
-          gradient="from-danger-500/20 to-danger-700/20"
           color="danger"
         />
       </div>

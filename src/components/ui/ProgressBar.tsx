@@ -2,20 +2,25 @@ import React from 'react';
 
 interface ProgressBarProps {
   value: number;
+  progress?: number;
   max?: number;
   showLabel?: boolean;
   size?: 'sm' | 'md' | 'lg';
-  color?: 'primary' | 'success' | 'warning' | 'danger';
+  color?: 'primary' | 'success' | 'warning' | 'danger' | 'auto';
+  className?: string;
 }
 
 export const ProgressBar: React.FC<ProgressBarProps> = ({
   value,
+  progress,
   max = 100,
   showLabel = true,
   size = 'md',
   color = 'primary',
+  className = '',
 }) => {
-  const percentage = Math.min(Math.round((value / max) * 100), 100);
+  const actualValue = progress !== undefined ? progress : value;
+  const percentage = Math.min(Math.round((actualValue / max) * 100), 100);
   
   const getColorClass = () => {
     if (color === 'auto') {
@@ -41,7 +46,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   };
 
   return (
-    <div className="w-full">
+    <div className={`w-full ${className}`}>
       <div className={`w-full bg-slate-700/50 rounded-full overflow-hidden ${getHeightClass()}`}>
         <div
           className={`h-full ${getColorClass()} rounded-full transition-all duration-500 ease-out`}
@@ -51,7 +56,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
       {showLabel && (
         <div className="flex justify-between mt-1 text-xs text-slate-400">
           <span>{percentage}%</span>
-          <span>{value}/{max}</span>
+          <span>{actualValue}/{max}</span>
         </div>
       )}
     </div>

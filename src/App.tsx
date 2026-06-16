@@ -1,12 +1,12 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
-import ShipList from '@/pages/ships/ShipList';
-import PlanList from '@/pages/plans/PlanList';
-import HazmatList from '@/pages/hazmat/HazmatList';
-import MaterialList from '@/pages/materials/MaterialList';
-import SafetyList from '@/pages/safety/SafetyList';
-import EnvMonitoring from '@/pages/env/EnvMonitoring';
-import StatisticsDashboard from '@/pages/statistics/StatisticsDashboard';
+import { ShipList } from '@/pages/ships/ShipList';
+import { PlanList } from '@/pages/plans/PlanList';
+import { HazmatList } from '@/pages/hazmat/HazmatList';
+import { MaterialList } from '@/pages/materials/MaterialList';
+import { SafetyList } from '@/pages/safety/SafetyList';
+import { EnvMonitoring } from '@/pages/env/EnvMonitoring';
+import { StatisticsDashboard } from '@/pages/statistics/StatisticsDashboard';
 
 export default function App() {
   return (

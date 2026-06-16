@@ -160,7 +160,6 @@ export const StatisticsDashboard: React.FC = () => {
           title="在拆船舶"
           value={overallStats.inProgressShips}
           icon={<Ship className="w-6 h-6" />}
-          gradient="from-primary-500/20 to-primary-700/20"
           color="primary"
           trend={{ value: 12, isUp: true }}
         />
@@ -168,7 +167,6 @@ export const StatisticsDashboard: React.FC = () => {
           title="总拆解进度"
           value={`${overallStats.totalDisassemblyProgress}%`}
           icon={<BarChart3 className="w-6 h-6" />}
-          gradient="from-success-500/20 to-success-700/20"
           color="success"
           trend={{ value: 8.5, isUp: true }}
         />
@@ -176,7 +174,6 @@ export const StatisticsDashboard: React.FC = () => {
           title="累计销售额"
           value={`${(overallStats.totalSalesAmount / 1000000).toFixed(1)} M`}
           icon={<DollarSign className="w-6 h-6" />}
-          gradient="from-warning-500/20 to-warning-700/20"
           color="warning"
           trend={{ value: 15.2, isUp: true }}
         />
@@ -184,7 +181,6 @@ export const StatisticsDashboard: React.FC = () => {
           title="物料回收量"
           value={`${(overallStats.totalMaterialsRecovered / 1000).toFixed(1)} kt`}
           icon={<Scale className="w-6 h-6" />}
-          gradient="from-slate-500/20 to-slate-700/20"
           color="slate"
           trend={{ value: 5.3, isUp: true }}
         />

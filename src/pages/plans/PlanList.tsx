@@ -65,6 +65,50 @@ export const PlanList: React.FC = () => {
     delayed: plans.filter(p => p.status === 'delayed').length,
   }), [plans]);
 
+  const shipGroups = useMemo(() => {
+    const groups: { [key: string]: DisassemblyPlan[] } = {};
+    plans.forEach(plan => {
+      if (!groups[plan.shipName]) {
+        groups[plan.shipName] = [];
+      }
+      groups[plan.shipName].push(plan);
+    });
+    return groups;
+  }, [plans]);
+
+  const allDates = useMemo(() => {
+    const dates: string[] = [];
+    plans.forEach(plan => {
+      let start = new Date(plan.startDate);
+      const end = new Date(plan.endDate);
+      while (start <= end) {
+        const dateStr = start.toISOString().split('T')[0];
+        if (!dates.includes(dateStr)) {
+          dates.push(dateStr);
+        }
+        start.setDate(start.getDate() + 1);
+      }
+    });
+    return dates.sort();
+  }, [plans]);
+
+  const shipProgress = useMemo(() => {
+    const progress: { [key: string]: { plans: DisassemblyPlan[]; avgProgress: number } } = {};
+    plans.forEach(plan => {
+      if (!progress[plan.shipName]) {
+        progress[plan.shipName] = { plans: [], avgProgress: 0 };
+      }
+      progress[plan.shipName].plans.push(plan);
+    });
+    Object.keys(progress).forEach(shipName => {
+      const shipPlans = progress[shipName].plans;
+      progress[shipName].avgProgress = Math.round(
+        shipPlans.reduce((sum, p) => sum + p.progress, 0) / shipPlans.length
+      );
+    });
+    return progress;
+  }, [plans]);
+
   const filteredPlans = useMemo(() => {
     return plans.filter(plan => {
       const matchKeyword = !searchKeyword ||
@@ -108,7 +152,7 @@ export const PlanList: React.FC = () => {
       title: '进度',
       render: (plan: DisassemblyPlan) => (
         <div className="w-40">
-          <ProgressBar progress={plan.progress} showLabel />
+          <ProgressBar value={plan.progress} progress={plan.progress} showLabel />
         </div>
       ),
     },
@@ -249,33 +293,6 @@ export const PlanList: React.FC = () => {
   const planTasks = selectedPlan ? getTasksByPlan(selectedPlan.id) : [];
 
   const renderGanttChart = () => {
-    const shipGroups = useMemo(() => {
-      const groups: { [key: string]: DisassemblyPlan[] } = {};
-      plans.forEach(plan => {
-        if (!groups[plan.shipName]) {
-          groups[plan.shipName] = [];
-        }
-        groups[plan.shipName].push(plan);
-      });
-      return groups;
-    }, [plans]);
-
-    const allDates = useMemo(() => {
-      const dates: string[] = [];
-      plans.forEach(plan => {
-        let start = new Date(plan.startDate);
-        const end = new Date(plan.endDate);
-        while (start <= end) {
-          const dateStr = start.toISOString().split('T')[0];
-          if (!dates.includes(dateStr)) {
-            dates.push(dateStr);
-          }
-          start.setDate(start.getDate() + 1);
-        }
-      });
-      return dates.sort();
-    }, [plans]);
-
     const getStatusColor = (status: string) => {
       switch (status) {
         case 'in_progress': return 'bg-primary-500';
@@ -335,23 +352,6 @@ export const PlanList: React.FC = () => {
   };
 
   const renderProgressOverview = () => {
-    const shipProgress = useMemo(() => {
-      const progress: { [key: string]: { plans: DisassemblyPlan[]; avgProgress: number } } = {};
-      plans.forEach(plan => {
-        if (!progress[plan.shipName]) {
-          progress[plan.shipName] = { plans: [], avgProgress: 0 };
-        }
-        progress[plan.shipName].plans.push(plan);
-      });
-      Object.keys(progress).forEach(shipName => {
-        const shipPlans = progress[shipName].plans;
-        progress[shipName].avgProgress = Math.round(
-          shipPlans.reduce((sum, p) => sum + p.progress, 0) / shipPlans.length
-        );
-      });
-      return progress;
-    }, [plans]);
-
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {Object.entries(shipProgress).map(([shipName, data]) => (
@@ -365,7 +365,7 @@ export const PlanList: React.FC = () => {
                 {data.avgProgress}%
               </span>
             </div>
-            <ProgressBar progress={data.avgProgress} size="lg" />
+            <ProgressBar value={data.avgProgress} progress={data.avgProgress} size="lg" />
             <div className="mt-4 space-y-3">
               {data.plans.map(plan => (
                 <div key={plan.id} className="flex items-center gap-3">
@@ -402,28 +402,24 @@ export const PlanList: React.FC = () => {
           title="总计划数"
           value={stats.total}
           icon={<Calendar className="w-6 h-6" />}
-          gradient="from-primary-500/20 to-primary-700/20"
           color="primary"
         />
         <StatCard
           title="进行中"
           value={stats.inProgress}
           icon={<PlayCircle className="w-6 h-6" />}
-          gradient="from-success-500/20 to-success-700/20"
           color="success"
         />
         <StatCard
           title="已完成"
           value={stats.completed}
           icon={<CheckCircle2 className="w-6 h-6" />}
-          gradient="from-slate-500/20 to-slate-700/20"
           color="slate"
         />
         <StatCard
           title="延期"
           value={stats.delayed}
           icon={<AlertTriangle className="w-6 h-6" />}
-          gradient="from-danger-500/20 to-danger-700/20"
           color="danger"
         />
       </div>

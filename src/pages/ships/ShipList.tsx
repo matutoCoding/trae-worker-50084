@@ -205,10 +205,10 @@ export const ShipList: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="船舶总数" value={stats.total} icon={Anchor} color="primary" />
-        <StatCard title="待拆解" value={stats.pending} icon={Calendar} color="warning" />
-        <StatCard title="拆解中" value={stats.inProgress} icon={Weight} color="primary" />
-        <StatCard title="已完成" value={stats.completed} icon={ShipIcon} color="success" />
+        <StatCard title="船舶总数" value={stats.total} icon={<Anchor className="w-6 h-6" />} color="primary" />
+        <StatCard title="待拆解" value={stats.pending} icon={<Calendar className="w-6 h-6" />} color="warning" />
+        <StatCard title="拆解中" value={stats.inProgress} icon={<Weight className="w-6 h-6" />} color="primary" />
+        <StatCard title="已完成" value={stats.completed} icon={<ShipIcon className="w-6 h-6" />} color="success" />
       </div>
 
       <div className="industrial-card">

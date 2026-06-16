@@ -438,28 +438,24 @@ export const HazmatList: React.FC = () => {
           title="总危废量"
           value={`${stats.total.toFixed(1)} t`}
           icon={<AlertTriangle className="w-6 h-6" />}
-          gradient="from-danger-500/20 to-danger-700/20"
           color="danger"
         />
         <StatCard
           title="已贮存"
           value={`${(stats.byStatus.stored || 0).toFixed(1)} t`}
           icon={<Package className="w-6 h-6" />}
-          gradient="from-warning-500/20 to-warning-700/20"
           color="warning"
         />
         <StatCard
           title="处理中"
           value={`${(stats.byStatus.processing || 0).toFixed(1)} t`}
           icon={<TrendingUp className="w-6 h-6" />}
-          gradient="from-primary-500/20 to-primary-700/20"
           color="primary"
         />
         <StatCard
           title="已完成"
           value={`${(stats.byStatus.completed || 0).toFixed(1)} t`}
           icon={<CheckCircle2 className="w-6 h-6" />}
-          gradient="from-success-500/20 to-success-700/20"
           color="success"
         />
       </div>

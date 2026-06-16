@@ -4,9 +4,10 @@ import { getStatusText } from '../../utils/format';
 interface StatusBadgeProps {
   status: string;
   className?: string;
+  size?: 'sm' | 'md' | 'lg';
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '' }) => {
+export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '', size = 'md' }) => {
   const getStatusClass = () => {
     switch (status) {
       case 'pending':
@@ -38,8 +39,16 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = ''
     }
   };
 
+  const getSizeClass = () => {
+    switch (size) {
+      case 'sm': return 'text-xs px-2 py-0.5';
+      case 'lg': return 'text-sm px-3 py-1';
+      default: return '';
+    }
+  };
+
   return (
-    <span className={`badge ${getStatusClass()} ${className}`}>
+    <span className={`badge ${getStatusClass()} ${getSizeClass()} ${className}`}>
       {getStatusText(status)}
     </span>
   );

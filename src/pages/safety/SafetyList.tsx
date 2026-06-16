@@ -93,11 +93,9 @@ export const SafetyList: React.FC = () => {
   const stats = useMemo(() => {
     const baseStats = getPermitStats();
     const inProgress = permits.filter(p => p.status === 'approved').length;
-    const completed = permits.filter(p => p.status === 'completed').length;
     return {
       ...baseStats,
       inProgress,
-      completed,
     };
   }, [permits, getPermitStats]);
 
@@ -125,6 +123,7 @@ export const SafetyList: React.FC = () => {
       .filter(p => p.gasDetection)
       .map(p => ({
         ...p.gasDetection!,
+        id: p.id,
         permitId: p.id,
         permit: p,
       }));
@@ -145,6 +144,17 @@ export const SafetyList: React.FC = () => {
     const start = (page - 1) * pageSize;
     return filteredGasRecords.slice(start, start + pageSize);
   }, [filteredGasRecords, page]);
+
+  const avgGasValues = useMemo(() => {
+    if (gasDetectionRecords.length === 0) return null;
+    return {
+      oxygen: gasDetectionRecords.reduce((sum, r) => sum + r.oxygen, 0) / gasDetectionRecords.length,
+      flammable: gasDetectionRecords.reduce((sum, r) => sum + r.flammable, 0) / gasDetectionRecords.length,
+      toxic: gasDetectionRecords.reduce((sum, r) => sum + r.toxic, 0) / gasDetectionRecords.length,
+      hydrogenSulfide: gasDetectionRecords.reduce((sum, r) => sum + r.hydrogenSulfide, 0) / gasDetectionRecords.length,
+      carbonMonoxide: gasDetectionRecords.reduce((sum, r) => sum + r.carbonMonoxide, 0) / gasDetectionRecords.length,
+    };
+  }, [gasDetectionRecords]);
 
   const getPermitTypeIcon = (type: string) => {
     switch (type) {
@@ -288,11 +298,13 @@ export const SafetyList: React.FC = () => {
     },
   ];
 
+  type GasDetectionRecord = GasDetection & { id: string; permitId: string; permit: SafetyPermit };
+
   const gasColumns = [
     {
       key: 'permit',
       title: '作业信息',
-      render: (record: GasDetection & { permitId: string; permit: SafetyPermit }) => (
+      render: (record: GasDetectionRecord) => (
         <div>
           <p className="font-medium text-slate-200">{record.permit.shipName}</p>
           <p className="text-xs text-slate-500">{getPermitTypeText(record.permit.type)} · {record.permit.location}</p>
@@ -302,7 +314,7 @@ export const SafetyList: React.FC = () => {
     {
       key: 'oxygen',
       title: '氧气 (%)',
-      render: (record: GasDetection) => {
+      render: (record: GasDetectionRecord) => {
         const status = getGasStatus(record.oxygen, thresholds.oxygen);
         return (
           <div className={`inline-flex items-center gap-1 px-2 py-1 rounded ${status.bg} ${status.color}`}>
@@ -314,7 +326,7 @@ export const SafetyList: React.FC = () => {
     {
       key: 'flammable',
       title: '可燃气体 (%)',
-      render: (record: GasDetection) => {
+      render: (record: GasDetectionRecord) => {
         const status = getGasStatus(record.flammable, thresholds.flammable);
         return (
           <div className={`inline-flex items-center gap-1 px-2 py-1 rounded ${status.bg} ${status.color}`}>
@@ -326,7 +338,7 @@ export const SafetyList: React.FC = () => {
     {
       key: 'toxic',
       title: '有毒气体 (ppm)',
-      render: (record: GasDetection) => {
+      render: (record: GasDetectionRecord) => {
         const status = getGasStatus(record.toxic, thresholds.toxic);
         return (
           <div className={`inline-flex items-center gap-1 px-2 py-1 rounded ${status.bg} ${status.color}`}>
@@ -338,7 +350,7 @@ export const SafetyList: React.FC = () => {
     {
       key: 'hydrogenSulfide',
       title: '硫化氢 (ppm)',
-      render: (record: GasDetection) => {
+      render: (record: GasDetectionRecord) => {
         const status = getGasStatus(record.hydrogenSulfide, thresholds.hydrogenSulfide);
         return (
           <div className={`inline-flex items-center gap-1 px-2 py-1 rounded ${status.bg} ${status.color}`}>
@@ -350,7 +362,7 @@ export const SafetyList: React.FC = () => {
     {
       key: 'carbonMonoxide',
       title: '一氧化碳 (ppm)',
-      render: (record: GasDetection) => {
+      render: (record: GasDetectionRecord) => {
         const status = getGasStatus(record.carbonMonoxide, thresholds.carbonMonoxide);
         return (
           <div className={`inline-flex items-center gap-1 px-2 py-1 rounded ${status.bg} ${status.color}`}>
@@ -362,7 +374,7 @@ export const SafetyList: React.FC = () => {
     {
       key: 'detectionTime',
       title: '检测时间',
-      render: (record: GasDetection) => (
+      render: (record: GasDetectionRecord) => (
         <div className="text-sm text-slate-300">
           {formatDateTime(record.detectionTime)}
         </div>
@@ -371,7 +383,7 @@ export const SafetyList: React.FC = () => {
     {
       key: 'detector',
       title: '检测人',
-      render: (record: GasDetection) => (
+      render: (record: GasDetectionRecord) => (
         <div className="flex items-center gap-1 text-sm text-slate-300">
           <User className="w-3 h-3 text-slate-500" />
           {record.detector}
@@ -524,25 +536,14 @@ export const SafetyList: React.FC = () => {
   };
 
   const renderGasOverview = () => {
-    const avgValues = useMemo(() => {
-      if (gasDetectionRecords.length === 0) return null;
-      return {
-        oxygen: gasDetectionRecords.reduce((sum, r) => sum + r.oxygen, 0) / gasDetectionRecords.length,
-        flammable: gasDetectionRecords.reduce((sum, r) => sum + r.flammable, 0) / gasDetectionRecords.length,
-        toxic: gasDetectionRecords.reduce((sum, r) => sum + r.toxic, 0) / gasDetectionRecords.length,
-        hydrogenSulfide: gasDetectionRecords.reduce((sum, r) => sum + r.hydrogenSulfide, 0) / gasDetectionRecords.length,
-        carbonMonoxide: gasDetectionRecords.reduce((sum, r) => sum + r.carbonMonoxide, 0) / gasDetectionRecords.length,
-      };
-    }, [gasDetectionRecords]);
-
-    if (!avgValues) return null;
+    if (!avgGasValues) return null;
 
     const gasItems = [
-      { key: 'oxygen', label: '氧气', value: avgValues.oxygen.toFixed(1), unit: '%', icon: <Wind className="w-5 h-5" /> },
-      { key: 'flammable', label: '可燃气体', value: avgValues.flammable.toFixed(1), unit: '%', icon: <Flame className="w-5 h-5" /> },
-      { key: 'toxic', label: '有毒气体', value: avgValues.toxic.toFixed(1), unit: 'ppm', icon: <AlertTriangle className="w-5 h-5" /> },
-      { key: 'hydrogenSulfide', label: '硫化氢', value: avgValues.hydrogenSulfide.toFixed(1), unit: 'ppm', icon: <Droplets className="w-5 h-5" /> },
-      { key: 'carbonMonoxide', label: '一氧化碳', value: avgValues.carbonMonoxide.toFixed(1), unit: 'ppm', icon: <AlertCircle className="w-5 h-5" /> },
+      { key: 'oxygen', label: '氧气', value: avgGasValues.oxygen.toFixed(1), unit: '%', icon: <Wind className="w-5 h-5" /> },
+      { key: 'flammable', label: '可燃气体', value: avgGasValues.flammable.toFixed(1), unit: '%', icon: <Flame className="w-5 h-5" /> },
+      { key: 'toxic', label: '有毒气体', value: avgGasValues.toxic.toFixed(1), unit: 'ppm', icon: <AlertTriangle className="w-5 h-5" /> },
+      { key: 'hydrogenSulfide', label: '硫化氢', value: avgGasValues.hydrogenSulfide.toFixed(1), unit: 'ppm', icon: <Droplets className="w-5 h-5" /> },
+      { key: 'carbonMonoxide', label: '一氧化碳', value: avgGasValues.carbonMonoxide.toFixed(1), unit: 'ppm', icon: <AlertCircle className="w-5 h-5" /> },
     ];
 
     return (
@@ -587,34 +588,24 @@ export const SafetyList: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard
           title="总许可数"
           value={stats.total}
           icon={<Shield className="w-6 h-6" />}
-          gradient="from-primary-500/20 to-primary-700/20"
           color="primary"
         />
         <StatCard
           title="待审批"
           value={stats.pending}
           icon={<Clock className="w-6 h-6" />}
-          gradient="from-warning-500/20 to-warning-700/20"
           color="warning"
         />
         <StatCard
           title="进行中"
           value={stats.inProgress}
           icon={<Activity className="w-6 h-6" />}
-          gradient="from-success-500/20 to-success-700/20"
           color="success"
-        />
-        <StatCard
-          title="已完成"
-          value={stats.completed}
-          icon={<CheckCircle2 className="w-6 h-6" />}
-          gradient="from-slate-500/20 to-slate-700/20"
-          color="slate"
         />
       </div>
 
@@ -637,7 +628,19 @@ export const SafetyList: React.FC = () => {
         ))}
       </div>
 
-      <TabNavigation tabs={tabs} activeTab={activeTab} onChange={(key) => { setActiveTab(key); setPage(1); }} />
+      <TabNavigation
+        tabs={tabs}
+        activeTab={activeTab}
+        onChange={(key) => {
+          setActiveTab(key);
+          setPage(1);
+          setSearchKeyword('');
+          if (key === 'gasDetection') {
+            setTypeFilter('all');
+            setStatusFilter('all');
+          }
+        }}
+      />
 
       <div className="flex flex-wrap gap-4 items-center">
         <div className="relative flex-1 min-w-[200px]">
@@ -738,7 +741,7 @@ export const SafetyList: React.FC = () => {
               className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-primary-500"
             >
               <option value="">请选择船舶</option>
-              {ships.filter(s => s.status !== 'completed').map(ship => (
+              {ships.map(ship => (
                 <option key={ship.id} value={ship.id}>{ship.name}</option>
               ))}
             </select>

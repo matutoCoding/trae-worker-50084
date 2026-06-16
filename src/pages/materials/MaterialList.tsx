@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Package,
   TrendingUp,
@@ -377,14 +377,14 @@ export const MaterialList: React.FC = () => {
     }));
   };
 
-  const calculateTotalAmount = () => {
+  useEffect(() => {
     const qty = parseFloat(saleForm.quantity) || 0;
     const price = parseFloat(saleForm.unitPrice) || 0;
     setSaleForm(prev => ({
       ...prev,
       totalAmount: String(qty * price),
     }));
-  };
+  }, [saleForm.quantity, saleForm.unitPrice]);
 
   const resetMaterialForm = () => {
     setMaterialForm({
@@ -440,28 +440,24 @@ export const MaterialList: React.FC = () => {
           title="库存总量"
           value={`${(inventoryStats.totalWeight / 1000).toFixed(1)} kt`}
           icon={<Scale className="w-6 h-6" />}
-          gradient="from-primary-500/20 to-primary-700/20"
           color="primary"
         />
         <StatCard
           title="库存估值"
           value={`${(inventoryStats.totalValue / 1000000).toFixed(1)} M`}
           icon={<DollarSign className="w-6 h-6" />}
-          gradient="from-success-500/20 to-success-700/20"
           color="success"
         />
         <StatCard
           title="累计销售额"
           value={`${(salesStats.totalRevenue / 1000000).toFixed(1)} M`}
           icon={<TrendingUp className="w-6 h-6" />}
-          gradient="from-warning-500/20 to-warning-700/20"
           color="warning"
         />
         <StatCard
           title="本月销售额"
           value={`${(salesStats.thisMonthRevenue / 10000).toFixed(0)} 万`}
           icon={<ShoppingCart className="w-6 h-6" />}
-          gradient="from-slate-500/20 to-slate-700/20"
           color="slate"
         />
       </div>
@@ -762,7 +758,7 @@ export const MaterialList: React.FC = () => {
               type="number"
               step="0.01"
               value={saleForm.quantity}
-              onChange={(e) => { setSaleForm(prev => ({ ...prev, quantity: e.target.value })); calculateTotalAmount(); }}
+              onChange={(e) => { setSaleForm(prev => ({ ...prev, quantity: e.target.value })); }}
               placeholder="销售数量"
               className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500"
             />
@@ -772,7 +768,7 @@ export const MaterialList: React.FC = () => {
             <input
               type="number"
               value={saleForm.unitPrice}
-              onChange={(e) => { setSaleForm(prev => ({ ...prev, unitPrice: e.target.value })); calculateTotalAmount(); }}
+              onChange={(e) => { setSaleForm(prev => ({ ...prev, unitPrice: e.target.value })); }}
               placeholder="每吨价格"
               className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500"
             />

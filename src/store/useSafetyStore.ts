@@ -67,7 +67,7 @@ export const useSafetyStore = create<SafetyStore>((set, get) => ({
 
   approvePermit: (id, approver) => {
     const permits = get().permits.map(p =>
-      p.id === id ? { ...p, status: 'approved', approver, approvalDate: getNow() } : p
+      p.id === id ? { ...p, status: 'approved' as const, approver, approvalDate: getNow() } : p
     );
     set({ permits });
     setStorage('safetyPermits', permits);
@@ -75,7 +75,7 @@ export const useSafetyStore = create<SafetyStore>((set, get) => ({
 
   rejectPermit: (id, approver) => {
     const permits = get().permits.map(p =>
-      p.id === id ? { ...p, status: 'rejected', approver, approvalDate: getNow() } : p
+      p.id === id ? { ...p, status: 'rejected' as const, approver, approvalDate: getNow() } : p
     );
     set({ permits });
     setStorage('safetyPermits', permits);

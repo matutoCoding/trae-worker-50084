@@ -1,22 +1,21 @@
 import React from 'react';
-import { LucideIcon } from 'lucide-react';
 
 interface StatCardProps {
   title: string;
   value: string | number;
-  icon: LucideIcon;
+  icon: React.ReactNode;
   trend?: {
     value: number;
     isUp: boolean;
   };
-  color?: 'primary' | 'success' | 'warning' | 'danger';
+  color?: 'primary' | 'success' | 'warning' | 'danger' | 'slate';
   className?: string;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
   title,
   value,
-  icon: Icon,
+  icon,
   trend,
   color = 'primary',
   className = '',
@@ -29,6 +28,8 @@ export const StatCard: React.FC<StatCardProps> = ({
         return 'from-warning-500/20 to-warning-900/20 border-warning-500/30 text-warning-400';
       case 'danger':
         return 'from-danger-500/20 to-danger-900/20 border-danger-500/30 text-danger-400';
+      case 'slate':
+        return 'from-slate-500/20 to-slate-900/20 border-slate-500/30 text-slate-400';
       default:
         return 'from-primary-500/20 to-primary-900/20 border-primary-500/30 text-primary-400';
     }
@@ -48,7 +49,7 @@ export const StatCard: React.FC<StatCardProps> = ({
           )}
         </div>
         <div className={`p-3 rounded-lg bg-slate-800/50 border border-slate-700/50`}>
-          <Icon className="w-6 h-6" />
+          {icon}
         </div>
       </div>
     </div>

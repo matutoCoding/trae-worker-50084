@@ -109,7 +109,7 @@ export interface SafetyPermit {
   approvalDate?: string;
   validFrom: string;
   validTo: string;
-  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'expired';
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'expired' | 'completed';
   gasDetection?: GasDetection;
 }
 

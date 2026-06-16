@@ -1,3 +1,5 @@
+export { formatDate, getToday, getNow, formatDateTime } from './date';
+
 export const formatNumber = (num: number, decimals: number = 2): string => {
   return num.toLocaleString('zh-CN', {
     minimumFractionDigits: decimals,
