@@ -20,6 +20,7 @@ interface DataTableProps<T> {
     onChange: (page: number) => void;
   };
   onRowClick?: (record: T) => void;
+  getRowClassName?: (record: T) => string;
   className?: string;
 }
 
@@ -29,6 +30,7 @@ export function DataTable<T extends { id: string }>({
   loading,
   pagination,
   onRowClick,
+  getRowClassName,
   className = '',
 }: DataTableProps<T>) {
   const totalPages = pagination ? Math.ceil(pagination.total / pagination.pageSize) : 1;
@@ -63,7 +65,7 @@ export function DataTable<T extends { id: string }>({
               <tr
                 key={record.id}
                 onClick={() => onRowClick?.(record)}
-                className={onRowClick ? 'cursor-pointer' : ''}
+                className={`${onRowClick ? 'cursor-pointer' : ''} ${getRowClassName ? getRowClassName(record) : ''}`}
               >
                 {columns.map((col) => (
                   <td key={col.key}>

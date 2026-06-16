@@ -22,7 +22,22 @@ import {
   ArrowRight,
   Warehouse,
   FileText,
+  Receipt,
+  AlertCircle,
+  Percent,
+  Truck,
+  Banknote,
 } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { useShipStore } from '../../store/useShipStore';
 import { usePlanStore } from '../../store/usePlanStore';
@@ -298,6 +313,42 @@ export const StatisticsDashboard: React.FC = () => {
     };
   }, [filteredSales, materials]);
 
+  const collectionStats = useMemo(() => {
+    const totalSales = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
+    const totalInvoiced = filteredSales.reduce((sum, s) => sum + (s.invoicedAmount || 0), 0);
+    const totalReceived = filteredSales.reduce((sum, s) => sum + (s.receivedAmount || 0), 0);
+    const totalPending = totalSales - totalReceived;
+    const collectionRate = totalSales > 0 ? (totalReceived / totalSales) * 100 : 0;
+
+    const byCustomer: Record<string, { sales: number; invoiced: number; received: number }> = {};
+    filteredSales.forEach(s => {
+      if (!byCustomer[s.customer]) {
+        byCustomer[s.customer] = { sales: 0, invoiced: 0, received: 0 };
+      }
+      byCustomer[s.customer].sales += s.totalAmount;
+      byCustomer[s.customer].invoiced += s.invoicedAmount || 0;
+      byCustomer[s.customer].received += s.receivedAmount || 0;
+    });
+
+    const customerCollectionRank = Object.entries(byCustomer)
+      .map(([name, data]) => ({
+        name,
+        销售额: Math.round(data.sales / 10000),
+        已开票: Math.round(data.invoiced / 10000),
+        已回款: Math.round(data.received / 10000),
+      }))
+      .sort((a, b) => b.销售额 - a.销售额);
+
+    return {
+      totalSales,
+      totalInvoiced,
+      totalReceived,
+      totalPending,
+      collectionRate,
+      customerCollectionRank,
+    };
+  }, [filteredSales]);
+
   const handleViewSaleDetail = (sale: Sale) => {
     setSelectedSale(sale);
     setIsModalOpen(true);
@@ -317,8 +368,9 @@ export const StatisticsDashboard: React.FC = () => {
   };
 
   const handleNavigateToMaterials = () => {
+    const saleId = selectedSale?.id || '';
     handleCloseModal();
-    navigate('/materials');
+    navigate(`/materials?tab=sales&saleId=${saleId}`);
   };
 
   const selectedSaleMaterial = useMemo(() => {
@@ -849,6 +901,165 @@ export const StatisticsDashboard: React.FC = () => {
 
           <div className="industrial-card p-5">
             <h3 className="text-sm font-medium text-slate-400 mb-4 flex items-center gap-2">
+              <Receipt className="w-4 h-4" />
+              回款分析
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="bg-slate-800/30 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-400">筛选后总销售额</p>
+                    <p className="text-2xl font-bold text-success-400 mt-1">
+                      {(collectionStats.totalSales / 10000).toFixed(0)} 万
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 bg-success-500/20 rounded-lg flex items-center justify-center">
+                    <DollarSign className="w-6 h-6 text-success-400" />
+                  </div>
+                </div>
+              </div>
+              <div className="bg-slate-800/30 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-400">已开票金额合计</p>
+                    <p className="text-2xl font-bold text-warning-400 mt-1">
+                      {(collectionStats.totalInvoiced / 10000).toFixed(0)} 万
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 bg-warning-500/20 rounded-lg flex items-center justify-center">
+                    <Receipt className="w-6 h-6 text-warning-400" />
+                  </div>
+                </div>
+              </div>
+              <div className="bg-slate-800/30 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-400">待回款金额</p>
+                    <p className="text-2xl font-bold text-danger-400 mt-1">
+                      {(collectionStats.totalPending / 10000).toFixed(0)} 万
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 bg-danger-500/20 rounded-lg flex items-center justify-center">
+                    <AlertCircle className="w-6 h-6 text-danger-400" />
+                  </div>
+                </div>
+              </div>
+              <div className="bg-slate-800/30 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-400">回款率</p>
+                    <p className="text-2xl font-bold text-primary-400 mt-1">
+                      {collectionStats.collectionRate.toFixed(1)}%
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 bg-primary-500/20 rounded-lg flex items-center justify-center">
+                    <Percent className="w-6 h-6 text-primary-400" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <h4 className="text-sm font-medium text-slate-400 mb-4 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" />
+                客户回款排行（万元）
+              </h4>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={collectionStats.customerCollectionRank.length > 0 ? collectionStats.customerCollectionRank : [{ name: '暂无数据', 销售额: 0, 已开票: 0, 已回款: 0 }]}
+                    margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                    <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                      labelStyle={{ color: '#cbd5e1' }}
+                      itemStyle={{ color: '#f1f5f9' }}
+                    />
+                    <Legend wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }} />
+                    <Bar dataKey="销售额" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="已开票" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="已回款" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-medium text-slate-400 mb-4 flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                回款明细
+              </h4>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-700/50">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-400">物料名称</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-400">客户</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-400">状态</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-400">销售额</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-400">已开票</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-400">已回款</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-400">待回款</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-400">回款率</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSales.length > 0 ? (
+                      filteredSales.map(sale => {
+                        const invoiced = sale.invoicedAmount || 0;
+                        const received = sale.receivedAmount || 0;
+                        const pending = sale.totalAmount - received;
+                        const rate = sale.totalAmount > 0 ? (received / sale.totalAmount) * 100 : 0;
+                        return (
+                          <tr key={sale.id} className="border-b border-slate-700/30 hover:bg-slate-800/30">
+                            <td className="py-3 px-4">
+                              <span className="font-medium text-slate-200">{sale.materialName}</span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-300">{sale.customer}</td>
+                            <td className="py-3 px-4">
+                              <span className={`px-2 py-1 text-xs rounded ${
+                                sale.status === 'completed' ? 'bg-success-500/20 text-success-400' :
+                                sale.status === 'shipped' ? 'bg-primary-500/20 text-primary-400' :
+                                sale.status === 'cancelled' ? 'bg-danger-500/20 text-danger-400' :
+                                'bg-warning-500/20 text-warning-400'
+                              }`}>
+                                {getStatusText(sale.status)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right text-success-400 font-medium">{formatCurrency(sale.totalAmount)}</td>
+                            <td className="py-3 px-4 text-right text-warning-400">{formatCurrency(invoiced)}</td>
+                            <td className="py-3 px-4 text-right text-primary-400">{formatCurrency(received)}</td>
+                            <td className="py-3 px-4 text-right text-danger-400">{formatCurrency(pending)}</td>
+                            <td className="py-3 px-4 text-right">
+                              <span className={`font-medium ${
+                                rate >= 80 ? 'text-success-400' :
+                                rate >= 50 ? 'text-warning-400' :
+                                rate > 0 ? 'text-danger-400' : 'text-slate-500'
+                              }`}>
+                                {rate.toFixed(1)}%
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-slate-500">
+                          暂无符合筛选条件的回款数据
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className="industrial-card p-5">
+            <h3 className="text-sm font-medium text-slate-400 mb-4 flex items-center gap-2">
               <PieChart className="w-4 h-4" />
               销售明细
             </h3>
@@ -938,6 +1149,88 @@ export const StatisticsDashboard: React.FC = () => {
       >
         {selectedSale && (
           <div className="space-y-6">
+            {(() => {
+              const trackingStageOrder = ['pending', 'outbound', 'invoiced', 'payment_received'];
+              const trackingStageLabels = [
+                { key: 'pending', label: '待确认', icon: <Clock className="w-5 h-5" /> },
+                { key: 'outbound', label: '已出库', icon: <Truck className="w-5 h-5" /> },
+                { key: 'invoiced', label: '已开票', icon: <Receipt className="w-5 h-5" /> },
+                { key: 'payment_received', label: '已回款', icon: <Banknote className="w-5 h-5" /> },
+              ];
+              const currentStageIndex = trackingStageOrder.indexOf(selectedSale.trackingStage || 'pending');
+
+              return (
+                <div className="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50">
+                  <h4 className="text-sm font-medium text-slate-300 mb-5 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4" />
+                    销售单流转
+                  </h4>
+                  <div className="relative">
+                    <div className="flex items-start justify-between relative z-10">
+                      {trackingStageLabels.map((stage, index) => {
+                        const isCompleted = index <= currentStageIndex;
+                        const isCurrent = index === currentStageIndex;
+                        return (
+                          <div key={stage.key} className="flex flex-col items-center flex-1 relative">
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                              isCompleted
+                                ? isCurrent
+                                  ? 'bg-primary-600 text-white ring-4 ring-primary-500/30'
+                                  : 'bg-success-600 text-white'
+                                : 'bg-slate-700 text-slate-500'
+                            }`}>
+                              {isCompleted && !isCurrent ? <CheckCircle2 className="w-6 h-6" /> : stage.icon}
+                            </div>
+                            <p className={`mt-2 text-xs font-medium ${
+                              isCurrent ? 'text-primary-400' : isCompleted ? 'text-slate-300' : 'text-slate-500'
+                            }`}>
+                              {stage.label}
+                            </p>
+                            {index < trackingStageLabels.length - 1 && (
+                              <div
+                                className={`absolute top-6 left-12 h-0.5 w-[calc(100%-48px)] ${
+                                  index < currentStageIndex ? 'bg-success-500' : 'bg-slate-700'
+                                }`}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedSale.trackingTimeline && selectedSale.trackingTimeline.length > 0 && (
+              <div className="bg-slate-800/30 rounded-lg p-5">
+                <h4 className="text-sm font-medium text-slate-400 mb-4 flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  流转记录
+                </h4>
+                <div className="relative">
+                  <div className="absolute left-5 top-2 bottom-2 w-0.5 bg-slate-700"></div>
+                  <div className="space-y-4">
+                    {selectedSale.trackingTimeline.map((item, index) => (
+                      <div key={index} className="relative flex gap-4 pl-12">
+                        <div className="absolute left-0 top-1 w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center border-2 border-primary-500 z-10">
+                          <Users className="w-4 h-4 text-primary-400" />
+                        </div>
+                        <div className="flex-1 bg-slate-800/50 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="font-medium text-slate-200">{item.stage}</p>
+                            <span className="text-xs text-slate-500">{item.time}</span>
+                          </div>
+                          <p className="text-sm text-slate-400 mb-1">操作人：{item.operator}</p>
+                          {item.note && <p className="text-xs text-slate-500">{item.note}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-800/30 rounded-lg p-4">
                 <p className="text-xs text-slate-500 mb-1">销售单号</p>

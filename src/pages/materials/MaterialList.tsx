@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Package,
   TrendingUp,
@@ -41,6 +42,7 @@ const categoryOptions = [
 export const MaterialList: React.FC = () => {
   const { materials, sales, addMaterial, updateMaterial, addSale, updateSale, getInventoryStats, getSalesStats } = useMaterialStore();
   const { ships } = useShipStore();
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('inventory');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -51,6 +53,7 @@ export const MaterialList: React.FC = () => {
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
+  const [highlightSaleId, setHighlightSaleId] = useState<string | null>(null);
   const [materialForm, setMaterialForm] = useState({
     shipId: '',
     shipName: '',
@@ -73,6 +76,18 @@ export const MaterialList: React.FC = () => {
     status: 'pending' as Sale['status'],
     invoiceNumber: '',
   });
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    const saleIdParam = searchParams.get('saleId');
+    if (tabParam === 'sales' || tabParam === 'inventory') {
+      setActiveTab(tabParam);
+    }
+    if (saleIdParam) {
+      setHighlightSaleId(saleIdParam);
+      setTimeout(() => setHighlightSaleId(null), 3000);
+    }
+  }, [searchParams]);
 
   const inventoryStats = useMemo(() => getInventoryStats(), [getInventoryStats]);
   const salesStats = useMemo(() => getSalesStats(), [getSalesStats]);
@@ -559,6 +574,9 @@ export const MaterialList: React.FC = () => {
             total: filteredSales.length,
             onChange: setPage,
           }}
+          getRowClassName={(record) =>
+            record.id === highlightSaleId ? 'bg-primary-500/20 animate-pulse' : ''
+          }
         />
       )}
 

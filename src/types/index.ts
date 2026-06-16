@@ -81,6 +81,13 @@ export interface Material {
   warehouse: string;
 }
 
+export interface TrackingTimelineItem {
+  stage: string;
+  time: string;
+  operator: string;
+  note?: string;
+}
+
 export interface Sale {
   id: string;
   materialId: string;
@@ -94,6 +101,10 @@ export interface Sale {
   invoiceNumber?: string;
   invoiceDate?: string;
   invoiceStatus?: 'not_issued' | 'issued' | 'sent' | 'received';
+  invoicedAmount?: number;
+  receivedAmount?: number;
+  trackingStage?: 'pending' | 'outbound' | 'invoiced' | 'payment_received';
+  trackingTimeline?: TrackingTimelineItem[];
 }
 
 export interface SafetyPermit {

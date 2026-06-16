@@ -173,6 +173,15 @@ export const mockSales: Sale[] = [
     invoiceNumber: 'FP202605001',
     invoiceDate: '2026-05-06',
     invoiceStatus: 'received',
+    invoicedAmount: 34375000,
+    receivedAmount: 30937500,
+    trackingStage: 'payment_received',
+    trackingTimeline: [
+      { stage: '待确认', time: '2026-05-05 09:30', operator: '张伟', note: '销售单创建，等待客户确认' },
+      { stage: '已出库', time: '2026-05-05 14:20', operator: '李娜', note: '物料已从A库区出库，运输车辆：沪A12345' },
+      { stage: '已开票', time: '2026-05-06 10:15', operator: '王芳', note: '发票已开具并发送：FP202605001' },
+      { stage: '已回款', time: '2026-05-10 16:45', operator: '赵敏', note: '已收到90%货款：30,937,500元' },
+    ],
   },
   {
     id: 's2',
@@ -187,6 +196,14 @@ export const mockSales: Sale[] = [
     invoiceNumber: 'FP202605002',
     invoiceDate: '2026-05-09',
     invoiceStatus: 'sent',
+    invoicedAmount: 21930000,
+    receivedAmount: 13158000,
+    trackingStage: 'invoiced',
+    trackingTimeline: [
+      { stage: '待确认', time: '2026-05-08 10:00', operator: '张伟', note: '销售单创建，等待客户确认' },
+      { stage: '已出库', time: '2026-05-08 15:30', operator: '李娜', note: '物料已从A库区出库' },
+      { stage: '已开票', time: '2026-05-09 11:00', operator: '王芳', note: '发票已开具并邮寄：FP202605002' },
+    ],
   },
   {
     id: 's3',
@@ -201,6 +218,14 @@ export const mockSales: Sale[] = [
     invoiceNumber: 'FP202605003',
     invoiceDate: '2026-05-16',
     invoiceStatus: 'issued',
+    invoicedAmount: 10350000,
+    receivedAmount: 3105000,
+    trackingStage: 'invoiced',
+    trackingTimeline: [
+      { stage: '待确认', time: '2026-05-15 08:45', operator: '张伟', note: '销售单创建' },
+      { stage: '已出库', time: '2026-05-15 13:10', operator: '李娜', note: '物料已从B库区出库，专车运输' },
+      { stage: '已开票', time: '2026-05-16 09:30', operator: '王芳', note: '发票已开具：FP202605003，待客户签收后寄出' },
+    ],
   },
   {
     id: 's4',
@@ -215,6 +240,13 @@ export const mockSales: Sale[] = [
     invoiceNumber: 'FP202606001',
     invoiceDate: '2026-06-02',
     invoiceStatus: 'issued',
+    invoicedAmount: 8400000,
+    receivedAmount: 1680000,
+    trackingStage: 'outbound',
+    trackingTimeline: [
+      { stage: '待确认', time: '2026-06-01 09:00', operator: '张伟', note: '销售单创建' },
+      { stage: '已出库', time: '2026-06-01 16:20', operator: '李娜', note: '物料已从A库区出库' },
+    ],
   },
   {
     id: 's5',
@@ -228,6 +260,12 @@ export const mockSales: Sale[] = [
     status: 'pending',
     invoiceNumber: '',
     invoiceStatus: 'not_issued',
+    invoicedAmount: 0,
+    receivedAmount: 0,
+    trackingStage: 'pending',
+    trackingTimeline: [
+      { stage: '待确认', time: '2026-06-05 14:30', operator: '张伟', note: '销售单创建，等待客户确认回传' },
+    ],
   },
   {
     id: 's6',
@@ -241,6 +279,12 @@ export const mockSales: Sale[] = [
     status: 'pending',
     invoiceNumber: '',
     invoiceStatus: 'not_issued',
+    invoicedAmount: 0,
+    receivedAmount: 0,
+    trackingStage: 'pending',
+    trackingTimeline: [
+      { stage: '待确认', time: '2026-06-10 10:15', operator: '张伟', note: '销售单创建，价格确认中' },
+    ],
   },
   {
     id: 's7',
@@ -254,5 +298,11 @@ export const mockSales: Sale[] = [
     status: 'pending',
     invoiceNumber: '',
     invoiceStatus: 'not_issued',
+    invoicedAmount: 0,
+    receivedAmount: 0,
+    trackingStage: 'pending',
+    trackingTimeline: [
+      { stage: '待确认', time: '2026-06-12 11:00', operator: '张伟', note: '销售单创建，合同待签署' },
+    ],
   },
 ];

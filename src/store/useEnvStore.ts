@@ -22,6 +22,7 @@ interface EnvStore {
     alertCount: number;
   };
   markAlertHandled: (id: string, handledBy?: string, handleNote?: string, handleResult?: string) => void;
+  addAlertFollowUp: (id: string, operator: string, note: string, result?: string) => void;
   addTreatmentRecord: (record: Omit<TreatmentRecord, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateTreatmentRecord: (id: string, record: Partial<TreatmentRecord>) => void;
   deleteTreatmentRecord: (id: string) => void;
@@ -125,6 +126,48 @@ export const useEnvStore = create<EnvStore>((set, get) => ({
         handledBy,
         handleNote,
         handleResult,
+        timeline: existingTimeline,
+      };
+    });
+    set({ monitorings });
+    setStorage('envMonitorings', monitorings);
+  },
+
+  addAlertFollowUp: (id, operator, note, result) => {
+    const now = new Date().toISOString().replace('T', ' ').substr(0, 19);
+    const monitorings = get().monitorings.map(m => {
+      if (m.id !== id) return m;
+      const existingTimeline = m.timeline ? [...m.timeline] : [];
+      if (existingTimeline.length === 0) {
+        existingTimeline.push({
+          time: m.monitorTime,
+          action: '告警创建',
+          operator: '系统',
+          note: `${m.type === 'dust' ? '扬尘' : m.type === 'noise' ? '噪声' : m.type === 'water' ? '水质' : '空气质量'}${m.status === 'exceeded' ? '超标' : '预警'}`,
+        });
+      }
+      let resultText = '';
+      if (result === 'handled') resultText = '已处置';
+      else if (result === 'followup') resultText = '需跟进';
+      else if (result === 'false_alarm') resultText = '误报';
+      
+      const followUpNote = result 
+        ? `处理结果：${resultText}${note ? '；说明：' + note : ''}`
+        : note;
+      
+      existingTimeline.push({
+        time: now,
+        action: '补充跟进',
+        operator,
+        note: followUpNote,
+      });
+      return {
+        ...m,
+        handled: true,
+        handledAt: m.handledAt || now,
+        handledBy: m.handledBy || operator,
+        handledNote: m.handledNote || note,
+        handleResult: m.handleResult || result,
         timeline: existingTimeline,
       };
     });

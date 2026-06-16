@@ -74,13 +74,32 @@ interface AlertHandleFormData {
   handleResult: string;
 }
 
+interface AlertFollowUpFormData {
+  operator: string;
+  note: string;
+  result: string;
+}
+
 const initialAlertFormData: AlertHandleFormData = {
   handledBy: '',
   handleNote: '',
   handleResult: 'handled',
 };
 
+const initialFollowUpFormData: AlertFollowUpFormData = {
+  operator: '',
+  note: '',
+  result: '',
+};
+
 const handleResultOptions = [
+  { value: 'handled', label: '已处置' },
+  { value: 'followup', label: '需跟进' },
+  { value: 'false_alarm', label: '误报' },
+];
+
+const followUpResultOptions = [
+  { value: '', label: '无（仅备注）' },
   { value: 'handled', label: '已处置' },
   { value: 'followup', label: '需跟进' },
   { value: 'false_alarm', label: '误报' },
@@ -108,6 +127,7 @@ export const EnvMonitoring: React.FC = () => {
     refreshCurrentData,
     getAlerts,
     markAlertHandled,
+    addAlertFollowUp,
     addTreatmentRecord,
     updateTreatmentRecord,
     filterTreatmentRecords,
@@ -128,6 +148,7 @@ export const EnvMonitoring: React.FC = () => {
   const [alertModalOpen, setAlertModalOpen] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<EnvMonitoringRecord | null>(null);
   const [alertFormData, setAlertFormData] = useState<AlertHandleFormData>(initialAlertFormData);
+  const [followUpFormData, setFollowUpFormData] = useState<AlertFollowUpFormData>(initialFollowUpFormData);
 
   const [treatmentModalOpen, setTreatmentModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<TreatmentRecord | null>(null);
@@ -190,6 +211,22 @@ export const EnvMonitoring: React.FC = () => {
     return filteredTreatmentRecords.slice(start, start + pageSize);
   }, [filteredTreatmentRecords, treatmentPage]);
 
+  const treatmentSummary = useMemo(() => {
+    const records = filteredTreatmentRecords;
+    const totalInflow = records.reduce((sum, r) => sum + r.inflow, 0);
+    const totalOutflow = records.reduce((sum, r) => sum + r.outflow, 0);
+    const exceedCount = records.filter(r => r.codAfter > 50 || r.oilAfter > 5 || r.ssAfter > 30).length;
+    const avgProcessingRate = records.length > 0
+      ? Math.round((records.reduce((sum, r) => sum + r.processingRate, 0) / records.length) * 10) / 10
+      : 0;
+    return {
+      totalInflow: Math.round(totalInflow * 10) / 10,
+      totalOutflow: Math.round(totalOutflow * 10) / 10,
+      exceedCount,
+      avgProcessingRate,
+    };
+  }, [filteredTreatmentRecords]);
+
   const handleExportCSV = () => {
     if (filteredTreatmentRecords.length === 0) {
       alert('暂无数据可导出');
@@ -212,7 +249,15 @@ export const EnvMonitoring: React.FC = () => {
       r.operator,
     ]);
 
-    const csvContent = [headers, ...rows]
+    const summaryRows = [
+      ['=======月度汇总======='],
+      ['总进水量（吨）', treatmentSummary.totalInflow.toString()],
+      ['总出水量（吨）', treatmentSummary.totalOutflow.toString()],
+      ['超标次数', treatmentSummary.exceedCount.toString()],
+      ['平均处理率（%）', `${treatmentSummary.avgProcessingRate}%`],
+    ];
+
+    const csvContent = [headers, ...rows, ...summaryRows]
       .map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(','))
       .join('\n');
 
@@ -270,11 +315,41 @@ export const EnvMonitoring: React.FC = () => {
       handleNote: alert.handledNote || '',
       handleResult: alert.handleResult || 'handled',
     });
+    setFollowUpFormData(initialFollowUpFormData);
     setAlertModalOpen(true);
   };
 
   const handleAlertFormChange = (field: keyof AlertHandleFormData, value: string) => {
     setAlertFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleFollowUpFormChange = (field: keyof AlertFollowUpFormData, value: string) => {
+    setFollowUpFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAddFollowUp = () => {
+    if (selectedAlert) {
+      if (!followUpFormData.operator.trim()) {
+        alert('请填写操作人');
+        return;
+      }
+      if (!followUpFormData.note.trim() && !followUpFormData.result) {
+        alert('请填写备注或选择处理结果');
+        return;
+      }
+      addAlertFollowUp(
+        selectedAlert.id,
+        followUpFormData.operator.trim(),
+        followUpFormData.note.trim(),
+        followUpFormData.result || undefined
+      );
+      fetchMonitorings();
+      setFollowUpFormData(initialFollowUpFormData);
+      const updatedAlert = monitorings.find(m => m.id === selectedAlert.id);
+      if (updatedAlert) {
+        setSelectedAlert(updatedAlert);
+      }
+    }
   };
 
   const handleMarkHandled = () => {
@@ -952,6 +1027,49 @@ export const EnvMonitoring: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="industrial-card p-5">
               <div className="flex items-center justify-between mb-4">
+                <h4 className="text-sm font-medium text-slate-400">总进水量</h4>
+                <Droplets className="w-5 h-5 text-cyan-400" />
+              </div>
+              <p className="text-3xl font-bold font-display text-slate-100">
+                {treatmentSummary.totalInflow}
+                <span className="text-sm font-normal text-slate-500 ml-1">吨</span>
+              </p>
+            </div>
+            <div className="industrial-card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-sm font-medium text-slate-400">总出水量</h4>
+                <Droplets className="w-5 h-5 text-success-400" />
+              </div>
+              <p className="text-3xl font-bold font-display text-slate-100">
+                {treatmentSummary.totalOutflow}
+                <span className="text-sm font-normal text-slate-500 ml-1">吨</span>
+              </p>
+            </div>
+            <div className="industrial-card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-sm font-medium text-slate-400">超标次数</h4>
+                <AlertTriangle className="w-5 h-5 text-danger-400" />
+              </div>
+              <p className="text-3xl font-bold font-display text-danger-400">
+                {treatmentSummary.exceedCount}
+                <span className="text-sm font-normal text-slate-500 ml-1">次</span>
+              </p>
+            </div>
+            <div className="industrial-card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-sm font-medium text-slate-400">平均处理率</h4>
+                <TrendingUp className="w-5 h-5 text-success-400" />
+              </div>
+              <p className="text-3xl font-bold font-display text-success-400">
+                {treatmentSummary.avgProcessingRate}
+                <span className="text-sm font-normal text-slate-500 ml-1">%</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="industrial-card p-5">
+              <div className="flex items-center justify-between mb-4">
                 <h4 className="text-sm font-medium text-slate-400">今日进水量</h4>
                 <Droplets className="w-5 h-5 text-cyan-400" />
               </div>
@@ -1128,27 +1246,46 @@ export const EnvMonitoring: React.FC = () => {
 
       <Modal
         isOpen={alertModalOpen}
-        onClose={() => { setAlertModalOpen(false); setSelectedAlert(null); setAlertFormData(initialAlertFormData); }}
+        onClose={() => { setAlertModalOpen(false); setSelectedAlert(null); setAlertFormData(initialAlertFormData); setFollowUpFormData(initialFollowUpFormData); }}
         title="告警详情"
         width="max-w-3xl"
         footer={
-          selectedAlert && !selectedAlert.handled ? (
-            <>
-              <button
-                onClick={() => { setAlertModalOpen(false); setSelectedAlert(null); setAlertFormData(initialAlertFormData); }}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors"
-              >
-                <X className="w-4 h-4" />
-                取消
-              </button>
-              <button
-                onClick={handleMarkHandled}
-                className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
-              >
-                <Check className="w-4 h-4" />
-                保存处理
-              </button>
-            </>
+          selectedAlert ? (
+            !selectedAlert.handled ? (
+              <>
+                <button
+                  onClick={() => { setAlertModalOpen(false); setSelectedAlert(null); setAlertFormData(initialAlertFormData); setFollowUpFormData(initialFollowUpFormData); }}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                  取消
+                </button>
+                <button
+                  onClick={handleMarkHandled}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
+                >
+                  <Check className="w-4 h-4" />
+                  保存处理
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => { setAlertModalOpen(false); setSelectedAlert(null); setAlertFormData(initialAlertFormData); setFollowUpFormData(initialFollowUpFormData); }}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                  关闭
+                </button>
+                <button
+                  onClick={handleAddFollowUp}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  提交跟进
+                </button>
+              </>
+            )
           ) : null
         }
       >
@@ -1199,24 +1336,63 @@ export const EnvMonitoring: React.FC = () => {
               </div>
               <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
                 <p className="text-sm text-slate-500 mb-1">当前状态</p>
-                <StatusBadge status={selectedAlert.status} />
-                {selectedAlert.handled && (
-                  <p className="text-xs text-success-400 mt-2">
-                    已由 {selectedAlert.handledBy} 于 {formatDate(selectedAlert.handledAt || '')} 处理
-                  </p>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={selectedAlert.status} />
+                  {selectedAlert.handled && (
+                    <span className="text-xs bg-success-500/20 text-success-400 px-2 py-0.5 rounded">
+                      已处理
+                    </span>
+                  )}
+                </div>
                 {selectedAlert.handleResult && (
-                  <span className={`inline-block mt-2 text-xs px-2 py-0.5 rounded ${
+                  <div className={`inline-block mt-2 text-xs px-2 py-0.5 rounded ${
                     selectedAlert.handleResult === 'handled' ? 'bg-success-500/20 text-success-400' :
                     selectedAlert.handleResult === 'followup' ? 'bg-warning-500/20 text-warning-400' :
                     'bg-slate-600/50 text-slate-400'
                   }`}>
-                    {selectedAlert.handleResult === 'handled' ? '已处置' :
+                    最新结果：{selectedAlert.handleResult === 'handled' ? '已处置' :
                      selectedAlert.handleResult === 'followup' ? '需跟进' : '误报'}
-                  </span>
+                  </div>
                 )}
               </div>
             </div>
+
+            {selectedAlert.handled && (
+              <div className="p-4 bg-success-500/10 rounded-lg border border-success-500/30 space-y-3">
+                <h4 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-success-400" />
+                  处理信息
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-slate-500">当前责任人：</span>
+                    <span className="text-slate-200 font-medium">{selectedAlert.handledBy || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">处理时间：</span>
+                    <span className="text-slate-200 font-medium">{selectedAlert.handledAt ? formatDate(selectedAlert.handledAt) : '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">最新处理结果：</span>
+                    <span className={`font-medium ${
+                      selectedAlert.handleResult === 'handled' ? 'text-success-400' :
+                      selectedAlert.handleResult === 'followup' ? 'text-warning-400' :
+                      selectedAlert.handleResult === 'false_alarm' ? 'text-slate-400' : 'text-slate-200'
+                    }`}>
+                      {selectedAlert.handleResult === 'handled' ? '已处置' :
+                       selectedAlert.handleResult === 'followup' ? '需跟进' :
+                       selectedAlert.handleResult === 'false_alarm' ? '误报' : '-'}
+                    </span>
+                  </div>
+                </div>
+                {selectedAlert.handledNote && (
+                  <div className="pt-2 border-t border-slate-700/50">
+                    <p className="text-slate-500 mb-1">完整处理说明：</p>
+                    <p className="text-slate-200 leading-relaxed">{selectedAlert.handledNote}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {!selectedAlert.handled && (
               <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50 space-y-4">
@@ -1263,10 +1439,50 @@ export const EnvMonitoring: React.FC = () => {
               </div>
             )}
 
-            {selectedAlert.handled && selectedAlert.handledNote && (
-              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
-                <h4 className="text-sm font-medium text-slate-400 mb-2">处理说明</h4>
-                <p className="text-slate-200">{selectedAlert.handledNote}</p>
+            {selectedAlert.handled && (
+              <div className="p-4 bg-primary-500/10 rounded-lg border border-primary-500/30 space-y-4">
+                <h4 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                  <Plus className="w-5 h-5 text-primary-400" />
+                  补充跟进
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      操作人 <span className="text-danger-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={followUpFormData.operator}
+                      onChange={(e) => handleFollowUpFormChange('operator', e.target.value)}
+                      placeholder="请输入操作人姓名"
+                      className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">处理结果（可选）</label>
+                    <select
+                      value={followUpFormData.result}
+                      onChange={(e) => handleFollowUpFormChange('result', e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-primary-500"
+                    >
+                      {followUpResultOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    跟进备注 <span className="text-danger-400">*</span>
+                  </label>
+                  <textarea
+                    value={followUpFormData.note}
+                    onChange={(e) => handleFollowUpFormChange('note', e.target.value)}
+                    placeholder="请输入跟进备注"
+                    rows={3}
+                    className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 resize-none"
+                  />
+                </div>
               </div>
             )}
 
@@ -1278,41 +1494,59 @@ export const EnvMonitoring: React.FC = () => {
               <div className="relative pl-6">
                 <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-slate-700" />
                 {(() => {
-                  const timeline = selectedAlert.timeline && selectedAlert.timeline.length > 0
-                    ? selectedAlert.timeline
+                  const baseTimeline = selectedAlert.timeline && selectedAlert.timeline.length > 0
+                    ? [...selectedAlert.timeline]
                     : [{
                         time: selectedAlert.monitorTime,
                         action: '告警创建',
                         operator: '系统',
                         note: `${selectedAlert.type === 'dust' ? '扬尘' : selectedAlert.type === 'noise' ? '噪声' : selectedAlert.type === 'water' ? '水质' : '空气质量'}${selectedAlert.status === 'exceeded' ? '超标' : '预警'}`,
                       }];
-                  return timeline.map((item, index) => (
-                    <div key={index} className="relative pb-6 last:pb-0">
-                      <div className={`absolute -left-4 w-4 h-4 rounded-full border-2 ${
-                        item.action === '告警创建'
-                          ? 'bg-danger-500 border-danger-400'
-                          : 'bg-success-500 border-success-400'
-                      }`} />
-                      <div className="bg-slate-800/50 rounded-lg border border-slate-700/50 p-4 ml-2">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              item.action === '告警创建'
-                                ? 'bg-danger-500/20 text-danger-400'
-                                : 'bg-success-500/20 text-success-400'
-                            }`}>
-                              {item.action}
-                            </span>
-                            <span className="text-sm text-slate-300">操作人：{item.operator}</span>
+                  const timeline = baseTimeline.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+                  const getTimelineItemStyle = (action: string) => {
+                    if (action === '告警创建') {
+                      return {
+                        dot: 'bg-danger-500 border-danger-400',
+                        badge: 'bg-danger-500/20 text-danger-400',
+                      };
+                    } else if (action === '告警处理') {
+                      return {
+                        dot: 'bg-success-500 border-success-400',
+                        badge: 'bg-success-500/20 text-success-400',
+                      };
+                    } else if (action === '补充跟进') {
+                      return {
+                        dot: 'bg-primary-500 border-primary-400',
+                        badge: 'bg-primary-500/20 text-primary-400',
+                      };
+                    }
+                    return {
+                      dot: 'bg-slate-500 border-slate-400',
+                      badge: 'bg-slate-500/20 text-slate-400',
+                    };
+                  };
+                  return timeline.map((item, index) => {
+                    const style = getTimelineItemStyle(item.action);
+                    return (
+                      <div key={index} className="relative pb-6 last:pb-0">
+                        <div className={`absolute -left-4 w-4 h-4 rounded-full border-2 ${style.dot}`} />
+                        <div className="bg-slate-800/50 rounded-lg border border-slate-700/50 p-4 ml-2">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${style.badge}`}>
+                                {item.action}
+                              </span>
+                              <span className="text-sm text-slate-300">操作人：{item.operator}</span>
+                            </div>
+                            <span className="text-xs text-slate-500">{formatDate(item.time)}</span>
                           </div>
-                          <span className="text-xs text-slate-500">{formatDate(item.time)}</span>
+                          {item.note && (
+                            <p className="text-sm text-slate-400 whitespace-pre-wrap">{item.note}</p>
+                          )}
                         </div>
-                        {item.note && (
-                          <p className="text-sm text-slate-400">{item.note}</p>
-                        )}
                       </div>
-                    </div>
-                  ));
+                    );
+                  });
                 })()}
               </div>
             </div>
