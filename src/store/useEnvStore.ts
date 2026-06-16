@@ -21,10 +21,11 @@ interface EnvStore {
     waterAvg: number;
     alertCount: number;
   };
-  markAlertHandled: (id: string, handledBy?: string) => void;
+  markAlertHandled: (id: string, handledBy?: string, handleNote?: string, handleResult?: string) => void;
   addTreatmentRecord: (record: Omit<TreatmentRecord, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateTreatmentRecord: (id: string, record: Partial<TreatmentRecord>) => void;
   deleteTreatmentRecord: (id: string) => void;
+  filterTreatmentRecords: (startDate?: string, endDate?: string) => TreatmentRecord[];
 }
 
 export const useEnvStore = create<EnvStore>((set, get) => ({
@@ -97,13 +98,36 @@ export const useEnvStore = create<EnvStore>((set, get) => ({
     return { dustAvg, noiseAvg, waterAvg, alertCount };
   },
 
-  markAlertHandled: (id, handledBy = '管理员') => {
+  markAlertHandled: (id, handledBy, handleNote, handleResult) => {
     const now = new Date().toISOString().replace('T', ' ').substr(0, 19);
-    const monitorings = get().monitorings.map(m =>
-      m.id === id
-        ? { ...m, handled: true, handledAt: now, handledBy }
-        : m
-    );
+    const monitorings = get().monitorings.map(m => {
+      if (m.id !== id) return m;
+      const existingTimeline = m.timeline ? [...m.timeline] : [];
+      if (existingTimeline.length === 0) {
+        existingTimeline.push({
+          time: m.monitorTime,
+          action: '告警创建',
+          operator: '系统',
+          note: `${m.type === 'dust' ? '扬尘' : m.type === 'noise' ? '噪声' : m.type === 'water' ? '水质' : '空气质量'}${m.status === 'exceeded' ? '超标' : '预警'}`,
+        });
+      }
+      const resultText = handleResult === 'handled' ? '已处置' : handleResult === 'followup' ? '需跟进' : '误报';
+      existingTimeline.push({
+        time: now,
+        action: '告警处理',
+        operator: handledBy,
+        note: `处理结果：${resultText}${handleNote ? '；说明：' + handleNote : ''}`,
+      });
+      return {
+        ...m,
+        handled: true,
+        handledAt: now,
+        handledBy,
+        handleNote,
+        handleResult,
+        timeline: existingTimeline,
+      };
+    });
     set({ monitorings });
     setStorage('envMonitorings', monitorings);
   },
@@ -136,5 +160,22 @@ export const useEnvStore = create<EnvStore>((set, get) => ({
     const treatmentRecords = get().treatmentRecords.filter(r => r.id !== id);
     set({ treatmentRecords });
     setStorage('treatmentRecords', treatmentRecords);
+  },
+
+  filterTreatmentRecords: (startDate, endDate) => {
+    return get().treatmentRecords.filter(r => {
+      const recordDate = new Date(r.date);
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        if (recordDate < start) return false;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (recordDate > end) return false;
+      }
+      return true;
+    });
   },
 }));

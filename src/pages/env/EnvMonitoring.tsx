@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -19,6 +19,8 @@ import {
   Plus,
   Check,
   X,
+  Download,
+  Calendar,
 } from 'lucide-react';
 import { EnvMonitoring as EnvMonitoringRecord, TreatmentRecord, TabItem } from '../../types';
 import { useEnvStore } from '../../store/useEnvStore';
@@ -66,6 +68,24 @@ interface TreatmentFormData {
   operator: string;
 }
 
+interface AlertHandleFormData {
+  handledBy: string;
+  handleNote: string;
+  handleResult: string;
+}
+
+const initialAlertFormData: AlertHandleFormData = {
+  handledBy: '',
+  handleNote: '',
+  handleResult: 'handled',
+};
+
+const handleResultOptions = [
+  { value: 'handled', label: '已处置' },
+  { value: 'followup', label: '需跟进' },
+  { value: 'false_alarm', label: '误报' },
+];
+
 const initialFormData: TreatmentFormData = {
   date: new Date().toISOString().split('T')[0],
   inflow: '',
@@ -90,6 +110,7 @@ export const EnvMonitoring: React.FC = () => {
     markAlertHandled,
     addTreatmentRecord,
     updateTreatmentRecord,
+    filterTreatmentRecords,
   } = useEnvStore();
 
   const [activeTab, setActiveTab] = useState('realtime');
@@ -98,8 +119,15 @@ export const EnvMonitoring: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
 
+  const [treatmentStartDate, setTreatmentStartDate] = useState('');
+  const [treatmentEndDate, setTreatmentEndDate] = useState('');
+  const [treatmentPage, setTreatmentPage] = useState(1);
+  const treatmentScrollRef = useRef<HTMLDivElement>(null);
+  const treatmentScrollPosition = useRef(0);
+
   const [alertModalOpen, setAlertModalOpen] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<EnvMonitoringRecord | null>(null);
+  const [alertFormData, setAlertFormData] = useState<AlertHandleFormData>(initialAlertFormData);
 
   const [treatmentModalOpen, setTreatmentModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<TreatmentRecord | null>(null);
@@ -152,11 +180,55 @@ export const EnvMonitoring: React.FC = () => {
     return filteredMonitorings.slice(start, start + pageSize);
   }, [filteredMonitorings, page]);
 
+  const filteredTreatmentRecords = useMemo(() => {
+    return filterTreatmentRecords(treatmentStartDate || undefined, treatmentEndDate || undefined);
+  }, [filterTreatmentRecords, treatmentStartDate, treatmentEndDate, treatmentRecords]);
+
   const paginatedTreatmentRecords = useMemo(() => {
     const pageSize = 10;
-    const start = (page - 1) * pageSize;
-    return treatmentRecords.slice(start, start + pageSize);
-  }, [treatmentRecords, page]);
+    const start = (treatmentPage - 1) * pageSize;
+    return filteredTreatmentRecords.slice(start, start + pageSize);
+  }, [filteredTreatmentRecords, treatmentPage]);
+
+  const handleExportCSV = () => {
+    if (filteredTreatmentRecords.length === 0) {
+      alert('暂无数据可导出');
+      return;
+    }
+
+    const headers = ['日期', '进水量', '出水量', '处理率', 'COD进水', 'COD出水', '石油类进水', '石油类出水', 'SS进水', 'SS出水', '状态', '操作员'];
+    const rows = filteredTreatmentRecords.map(r => [
+      r.date,
+      r.inflow.toString(),
+      r.outflow.toString(),
+      `${r.processingRate}%`,
+      r.codBefore.toString(),
+      r.codAfter.toString(),
+      r.oilBefore.toString(),
+      r.oilAfter.toString(),
+      r.ssBefore.toString(),
+      r.ssAfter.toString(),
+      r.status === 'normal' ? '达标' : '接近阈值',
+      r.operator,
+    ]);
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    const dateStr = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `油污水处理记录_${dateStr}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const calculateProcessingRate = (inflow: number, outflow: number): number => {
     if (inflow <= 0) return 0;
@@ -193,14 +265,34 @@ export const EnvMonitoring: React.FC = () => {
 
   const handleAlertClick = (alert: EnvMonitoringRecord) => {
     setSelectedAlert(alert);
+    setAlertFormData({
+      handledBy: alert.handledBy || '',
+      handleNote: alert.handledNote || '',
+      handleResult: alert.handleResult || 'handled',
+    });
     setAlertModalOpen(true);
+  };
+
+  const handleAlertFormChange = (field: keyof AlertHandleFormData, value: string) => {
+    setAlertFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const handleMarkHandled = () => {
     if (selectedAlert) {
-      markAlertHandled(selectedAlert.id);
+      if (!alertFormData.handledBy.trim()) {
+        alert('请填写责任人');
+        return;
+      }
+      markAlertHandled(
+        selectedAlert.id,
+        alertFormData.handledBy.trim(),
+        alertFormData.handleNote.trim(),
+        alertFormData.handleResult
+      );
+      fetchMonitorings();
       setAlertModalOpen(false);
       setSelectedAlert(null);
+      setAlertFormData(initialAlertFormData);
     }
   };
 
@@ -535,7 +627,22 @@ export const EnvMonitoring: React.FC = () => {
         />
       </div>
 
-      <TabNavigation tabs={tabs} activeTab={activeTab} onChange={(key) => { setActiveTab(key); setPage(1); }} />
+      <TabNavigation tabs={tabs} activeTab={activeTab} onChange={(key) => {
+        if (activeTab === 'treatment' && treatmentScrollRef.current) {
+          treatmentScrollPosition.current = treatmentScrollRef.current.scrollTop;
+        }
+        setActiveTab(key);
+        if (key !== 'treatment') {
+          setPage(1);
+        }
+        if (key === 'treatment') {
+          setTimeout(() => {
+            if (treatmentScrollRef.current) {
+              treatmentScrollRef.current.scrollTop = treatmentScrollPosition.current;
+            }
+          }, 0);
+        }
+      }} />
 
       {activeTab === 'realtime' && (
         <>
@@ -783,16 +890,63 @@ export const EnvMonitoring: React.FC = () => {
       )}
 
       {activeTab === 'treatment' && (
-        <>
-          <div className="flex items-center justify-between">
+        <div ref={treatmentScrollRef} className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <h3 className="text-lg font-semibold text-slate-200">处理记录管理</h3>
-            <button
-              onClick={handleAddRecord}
-              className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              新增记录
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-2 px-4 py-2 bg-success-600 hover:bg-success-500 text-white rounded-lg transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                导出CSV
+              </button>
+              <button
+                onClick={handleAddRecord}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                新增记录
+              </button>
+            </div>
+          </div>
+
+          <div className="industrial-card p-4">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-sm font-medium text-slate-400 mb-2 flex items-center gap-1">
+                  <Calendar className="w-4 h-4" />
+                  开始日期
+                </label>
+                <input
+                  type="date"
+                  value={treatmentStartDate}
+                  onChange={(e) => { setTreatmentStartDate(e.target.value); setTreatmentPage(1); }}
+                  className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-primary-500"
+                />
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-sm font-medium text-slate-400 mb-2 flex items-center gap-1">
+                  <Calendar className="w-4 h-4" />
+                  结束日期
+                </label>
+                <input
+                  type="date"
+                  value={treatmentEndDate}
+                  onChange={(e) => { setTreatmentEndDate(e.target.value); setTreatmentPage(1); }}
+                  className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-primary-500"
+                />
+              </div>
+              <button
+                onClick={() => { setTreatmentStartDate(''); setTreatmentEndDate(''); setTreatmentPage(1); }}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors"
+              >
+                重置筛选
+              </button>
+              <div className="text-sm text-slate-400">
+                共 <span className="text-primary-400 font-medium">{filteredTreatmentRecords.length}</span> 条记录
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -909,52 +1063,54 @@ export const EnvMonitoring: React.FC = () => {
               ))}
             </div>
           </div>
-        </>
+        </div>
       )}
 
-      <div className="flex flex-wrap gap-4 items-center">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="搜索监测位置、设备编号..."
-            value={searchKeyword}
-            onChange={(e) => { setSearchKeyword(e.target.value); setPage(1); }}
-            className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500"
-          />
+      {activeTab !== 'treatment' && (
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input
+              type="text"
+              placeholder="搜索监测位置、设备编号..."
+              value={searchKeyword}
+              onChange={(e) => { setSearchKeyword(e.target.value); setPage(1); }}
+              className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-slate-500" />
+            <select
+              value={typeFilter}
+              onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
+              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-primary-500"
+            >
+              {monitorTypeOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-primary-500"
+            >
+              {statusOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-slate-500" />
-          <select
-            value={typeFilter}
-            onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
-            className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-primary-500"
-          >
-            {monitorTypeOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-            className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-primary-500"
-          >
-            {statusOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+      )}
 
       {activeTab === 'treatment' ? (
         <DataTable
           columns={treatmentColumns}
           data={paginatedTreatmentRecords}
           pagination={{
-            current: page,
+            current: treatmentPage,
             pageSize: 10,
-            total: treatmentRecords.length,
-            onChange: setPage,
+            total: filteredTreatmentRecords.length,
+            onChange: setTreatmentPage,
           }}
         />
       ) : (
@@ -972,18 +1128,27 @@ export const EnvMonitoring: React.FC = () => {
 
       <Modal
         isOpen={alertModalOpen}
-        onClose={() => { setAlertModalOpen(false); setSelectedAlert(null); }}
+        onClose={() => { setAlertModalOpen(false); setSelectedAlert(null); setAlertFormData(initialAlertFormData); }}
         title="告警详情"
         width="max-w-3xl"
         footer={
           selectedAlert && !selectedAlert.handled ? (
-            <button
-              onClick={handleMarkHandled}
-              className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
-            >
-              <Check className="w-4 h-4" />
-              标记已处理
-            </button>
+            <>
+              <button
+                onClick={() => { setAlertModalOpen(false); setSelectedAlert(null); setAlertFormData(initialAlertFormData); }}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4" />
+                取消
+              </button>
+              <button
+                onClick={handleMarkHandled}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
+              >
+                <Check className="w-4 h-4" />
+                保存处理
+              </button>
+            </>
           ) : null
         }
       >
@@ -1040,6 +1205,115 @@ export const EnvMonitoring: React.FC = () => {
                     已由 {selectedAlert.handledBy} 于 {formatDate(selectedAlert.handledAt || '')} 处理
                   </p>
                 )}
+                {selectedAlert.handleResult && (
+                  <span className={`inline-block mt-2 text-xs px-2 py-0.5 rounded ${
+                    selectedAlert.handleResult === 'handled' ? 'bg-success-500/20 text-success-400' :
+                    selectedAlert.handleResult === 'followup' ? 'bg-warning-500/20 text-warning-400' :
+                    'bg-slate-600/50 text-slate-400'
+                  }`}>
+                    {selectedAlert.handleResult === 'handled' ? '已处置' :
+                     selectedAlert.handleResult === 'followup' ? '需跟进' : '误报'}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {!selectedAlert.handled && (
+              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50 space-y-4">
+                <h4 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                  <Edit className="w-5 h-5 text-primary-400" />
+                  告警处理
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      责任人 <span className="text-danger-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={alertFormData.handledBy}
+                      onChange={(e) => handleAlertFormChange('handledBy', e.target.value)}
+                      placeholder="请输入责任人姓名"
+                      className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">处理结果</label>
+                    <select
+                      value={alertFormData.handleResult}
+                      onChange={(e) => handleAlertFormChange('handleResult', e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-primary-500"
+                    >
+                      {handleResultOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">处理说明</label>
+                  <textarea
+                    value={alertFormData.handleNote}
+                    onChange={(e) => handleAlertFormChange('handleNote', e.target.value)}
+                    placeholder="请输入处理说明（选填）"
+                    rows={3}
+                    className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 resize-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {selectedAlert.handled && selectedAlert.handledNote && (
+              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
+                <h4 className="text-sm font-medium text-slate-400 mb-2">处理说明</h4>
+                <p className="text-slate-200">{selectedAlert.handledNote}</p>
+              </div>
+            )}
+
+            <div>
+              <h4 className="text-lg font-semibold text-slate-200 mb-3 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-primary-400" />
+                时间线
+              </h4>
+              <div className="relative pl-6">
+                <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-slate-700" />
+                {(() => {
+                  const timeline = selectedAlert.timeline && selectedAlert.timeline.length > 0
+                    ? selectedAlert.timeline
+                    : [{
+                        time: selectedAlert.monitorTime,
+                        action: '告警创建',
+                        operator: '系统',
+                        note: `${selectedAlert.type === 'dust' ? '扬尘' : selectedAlert.type === 'noise' ? '噪声' : selectedAlert.type === 'water' ? '水质' : '空气质量'}${selectedAlert.status === 'exceeded' ? '超标' : '预警'}`,
+                      }];
+                  return timeline.map((item, index) => (
+                    <div key={index} className="relative pb-6 last:pb-0">
+                      <div className={`absolute -left-4 w-4 h-4 rounded-full border-2 ${
+                        item.action === '告警创建'
+                          ? 'bg-danger-500 border-danger-400'
+                          : 'bg-success-500 border-success-400'
+                      }`} />
+                      <div className="bg-slate-800/50 rounded-lg border border-slate-700/50 p-4 ml-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              item.action === '告警创建'
+                                ? 'bg-danger-500/20 text-danger-400'
+                                : 'bg-success-500/20 text-success-400'
+                            }`}>
+                              {item.action}
+                            </span>
+                            <span className="text-sm text-slate-300">操作人：{item.operator}</span>
+                          </div>
+                          <span className="text-xs text-slate-500">{formatDate(item.time)}</span>
+                        </div>
+                        {item.note && (
+                          <p className="text-sm text-slate-400">{item.note}</p>
+                        )}
+                      </div>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
 

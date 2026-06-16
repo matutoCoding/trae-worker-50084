@@ -54,6 +54,9 @@ export const getStatusText = (status: string): string => {
     rejected: '已驳回',
     expired: '已过期',
     received: '已接收',
+    not_issued: '未开具',
+    issued: '已开票',
+    sent: '已寄送',
   };
   return statusMap[status] || status;
 };

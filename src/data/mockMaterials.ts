@@ -171,6 +171,8 @@ export const mockSales: Sale[] = [
     saleDate: '2026-05-05',
     status: 'completed',
     invoiceNumber: 'FP202605001',
+    invoiceDate: '2026-05-06',
+    invoiceStatus: 'received',
   },
   {
     id: 's2',
@@ -183,6 +185,8 @@ export const mockSales: Sale[] = [
     saleDate: '2026-05-08',
     status: 'completed',
     invoiceNumber: 'FP202605002',
+    invoiceDate: '2026-05-09',
+    invoiceStatus: 'sent',
   },
   {
     id: 's3',
@@ -195,6 +199,8 @@ export const mockSales: Sale[] = [
     saleDate: '2026-05-15',
     status: 'completed',
     invoiceNumber: 'FP202605003',
+    invoiceDate: '2026-05-16',
+    invoiceStatus: 'issued',
   },
   {
     id: 's4',
@@ -207,6 +213,8 @@ export const mockSales: Sale[] = [
     saleDate: '2026-06-01',
     status: 'shipped',
     invoiceNumber: 'FP202606001',
+    invoiceDate: '2026-06-02',
+    invoiceStatus: 'issued',
   },
   {
     id: 's5',
@@ -219,6 +227,7 @@ export const mockSales: Sale[] = [
     saleDate: '2026-06-05',
     status: 'pending',
     invoiceNumber: '',
+    invoiceStatus: 'not_issued',
   },
   {
     id: 's6',
@@ -231,6 +240,7 @@ export const mockSales: Sale[] = [
     saleDate: '2026-06-10',
     status: 'pending',
     invoiceNumber: '',
+    invoiceStatus: 'not_issued',
   },
   {
     id: 's7',
@@ -243,5 +253,6 @@ export const mockSales: Sale[] = [
     saleDate: '2026-06-12',
     status: 'pending',
     invoiceNumber: '',
+    invoiceStatus: 'not_issued',
   },
 ];

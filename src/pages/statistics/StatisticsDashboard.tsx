@@ -19,7 +19,11 @@ import {
   Filter,
   X,
   Eye,
+  ArrowRight,
+  Warehouse,
+  FileText,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useShipStore } from '../../store/useShipStore';
 import { usePlanStore } from '../../store/usePlanStore';
 import { useMaterialStore } from '../../store/useMaterialStore';
@@ -39,7 +43,8 @@ const tabs: TabItem[] = [
 ];
 
 export const StatisticsDashboard: React.FC = () => {
-  const { ships } = useShipStore();
+  const navigate = useNavigate();
+  const { ships, getShipById } = useShipStore();
   const { plans } = usePlanStore();
   const { materials, sales, getInventoryStats, getSalesStats } = useMaterialStore();
   const { wastes, getWasteStats } = useHazmatStore();
@@ -218,8 +223,24 @@ export const StatisticsDashboard: React.FC = () => {
     const totalRevenue = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
 
     const byCustomer: Record<string, number> = {};
+    const byCategory: Record<string, number> = {};
+    const byMonth: Record<string, number> = {};
+
+    const materialIdToCategory: Record<string, string> = {};
+    materials.forEach(m => {
+      materialIdToCategory[m.id] = m.category;
+    });
+
     filteredSales.forEach(s => {
       byCustomer[s.customer] = (byCustomer[s.customer] || 0) + s.totalAmount;
+
+      const category = materialIdToCategory[s.materialId] || 'other';
+      const categoryLabel = getMaterialCategoryText(category);
+      byCategory[categoryLabel] = (byCategory[categoryLabel] || 0) + s.totalAmount;
+
+      const saleDate = new Date(s.saleDate);
+      const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`;
+      byMonth[monthKey] = (byMonth[monthKey] || 0) + s.totalAmount;
     });
 
     const topCustomers = Object.entries(byCustomer)
@@ -227,14 +248,55 @@ export const StatisticsDashboard: React.FC = () => {
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
+    const categoryDistribution = Object.entries(byCategory)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    const categoryTotal = categoryDistribution.reduce((sum, c) => sum + c.value, 0);
+    const categoryPercentage = categoryDistribution.map(c => ({
+      name: c.name,
+      value: categoryTotal > 0 ? Math.round((c.value / categoryTotal) * 100) : 0,
+    }));
+
+    const monthlyTrend = Object.entries(byMonth)
+      .map(([name, value]) => ({ name: name.substring(5) + '月', value }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
     return {
       totalRevenue,
       byCustomer,
       topCustomers,
       orderCount: filteredSales.length,
       customerCount: Object.keys(byCustomer).length,
+      categoryDistribution,
+      categoryPercentage,
+      monthlyTrend,
+      categorySalesByMonth: (() => {
+        const categoryMonthData: Record<string, Record<string, number>> = {};
+        filteredSales.forEach(s => {
+          const category = materialIdToCategory[s.materialId] || 'other';
+          const categoryLabel = getMaterialCategoryText(category);
+          const saleDate = new Date(s.saleDate);
+          const monthKey = `${saleDate.getMonth() + 1}月`;
+          if (!categoryMonthData[categoryLabel]) {
+            categoryMonthData[categoryLabel] = {};
+          }
+          categoryMonthData[categoryLabel][monthKey] = (categoryMonthData[categoryLabel][monthKey] || 0) + s.totalAmount;
+        });
+        const allMonths = Array.from(new Set(filteredSales.map(s => {
+          const d = new Date(s.saleDate);
+          return `${d.getMonth() + 1}月`;
+        }))).sort();
+        return Object.entries(categoryMonthData).map(([category, monthData]) => ({
+          name: category,
+          data: allMonths.map(month => ({
+            name: month,
+            value: monthData[month] || 0,
+          })),
+        }));
+      })(),
     };
-  }, [filteredSales]);
+  }, [filteredSales, materials]);
 
   const handleViewSaleDetail = (sale: Sale) => {
     setSelectedSale(sale);
@@ -253,6 +315,22 @@ export const StatisticsDashboard: React.FC = () => {
     setCustomStartDate('');
     setCustomEndDate('');
   };
+
+  const handleNavigateToMaterials = () => {
+    handleCloseModal();
+    navigate('/materials');
+  };
+
+  const selectedSaleMaterial = useMemo(() => {
+    if (!selectedSale) return null;
+    return materials.find(m => m.id === selectedSale.materialId) || null;
+  }, [selectedSale, materials]);
+
+  const selectedSaleShipName = useMemo(() => {
+    if (!selectedSaleMaterial?.shipId) return '未知';
+    const ship = getShipById(selectedSaleMaterial.shipId);
+    return ship?.name || selectedSaleMaterial.shipName || selectedSaleMaterial.shipId;
+  }, [selectedSaleMaterial, getShipById]);
 
   return (
     <div className="space-y-6">
@@ -645,11 +723,10 @@ export const StatisticsDashboard: React.FC = () => {
                 <div>
                   <p className="text-sm text-slate-400">累计销售额</p>
                   <p className="text-2xl font-bold text-primary-400 mt-1">
-                    {(salesStats.totalRevenue / 1000000).toFixed(1)} M
+                    {(filteredSalesStats.totalRevenue / 10000).toFixed(0)} 万
                   </p>
-                  <p className="text-xs text-success-400 mt-1 flex items-center gap-1">
-                    <ArrowUpRight className="w-3 h-3" />
-                    +18.2% 环比
+                  <p className="text-xs text-slate-400 mt-1">
+                    筛选范围内累计
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-primary-500/20 rounded-lg flex items-center justify-center">
@@ -699,16 +776,76 @@ export const StatisticsDashboard: React.FC = () => {
             />
             <BarChartCard
               title="物料类别销售占比"
-              data={[
-                { name: '重型废钢', value: 45 },
-                { name: '中型废钢', value: 30 },
-                { name: '紫铜', value: 12 },
-                { name: '铝合金', value: 8 },
-                { name: '不锈钢', value: 5 },
-              ]}
+              data={filteredSalesStats.categoryPercentage.length > 0 ? filteredSalesStats.categoryPercentage : [{ name: '暂无数据', value: 0 }]}
               unit="%"
             />
           </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <BarChartCard
+              title="按月销售额趋势"
+              data={filteredSalesStats.monthlyTrend.length > 0 ? filteredSalesStats.monthlyTrend.map(d => ({ ...d, value: d.value / 10000 })) : [{ name: '暂无数据', value: 0 }]}
+              unit="万元"
+              color="#10b981"
+            />
+            {filteredSalesStats.categorySalesByMonth.length > 0 && filteredSalesStats.categorySalesByMonth[0].data.length > 0 ? (
+              filteredSalesStats.categorySalesByMonth.map((category, idx) => (
+                <LineChartCard
+                  key={category.name}
+                  title={`${category.name}销售额趋势`}
+                  data={category.data.map(d => ({ ...d, value: d.value / 10000 }))}
+                  color={['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][idx % 5]}
+                  unit="万元"
+                />
+              ))
+            ) : (
+              <BarChartCard
+                title="按物料类别销售额趋势"
+                data={[{ name: '暂无数据', value: 0 }]}
+                unit="万元"
+              />
+            )}
+          </div>
+
+          {filteredSalesStats.categorySalesByMonth.length > 1 && (
+            <div className="industrial-card p-5">
+              <h3 className="text-sm font-medium text-slate-400 mb-4 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" />
+                各物料类别月度销售额对比（万元）
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-700/50">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-400">物料类别</th>
+                      {filteredSalesStats.categorySalesByMonth[0]?.data.map(d => (
+                        <th key={d.name} className="text-right py-3 px-4 text-sm font-medium text-slate-400">{d.name}</th>
+                      ))}
+                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-400">合计</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSalesStats.categorySalesByMonth.map(category => {
+                      const total = category.data.reduce((sum, d) => sum + d.value, 0);
+                      return (
+                        <tr key={category.name} className="border-b border-slate-700/30 hover:bg-slate-800/30">
+                          <td className="py-3 px-4 font-medium text-slate-200">{category.name}</td>
+                          {category.data.map(d => (
+                            <td key={d.name} className="py-3 px-4 text-right text-slate-300">
+                              {(d.value / 10000).toFixed(0)}
+                            </td>
+                          ))}
+                          <td className="py-3 px-4 text-right text-success-400 font-medium">
+                            {(total / 10000).toFixed(0)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="industrial-card p-5">
             <h3 className="text-sm font-medium text-slate-400 mb-4 flex items-center gap-2">
@@ -782,12 +919,21 @@ export const StatisticsDashboard: React.FC = () => {
         title="销售单详情"
         width="max-w-3xl"
         footer={
-          <button
-            onClick={handleCloseModal}
-            className="px-4 py-2 bg-slate-700 text-slate-200 rounded-lg hover:bg-slate-600 transition-colors"
-          >
-            关闭
-          </button>
+          <div className="flex items-center justify-between w-full">
+            <button
+              onClick={handleNavigateToMaterials}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-500 transition-colors"
+            >
+              <ArrowRight className="w-4 h-4" />
+              跳转到物料管理
+            </button>
+            <button
+              onClick={handleCloseModal}
+              className="px-4 py-2 bg-slate-700 text-slate-200 rounded-lg hover:bg-slate-600 transition-colors"
+            >
+              关闭
+            </button>
+          </div>
         }
       >
         {selectedSale && (
@@ -808,6 +954,72 @@ export const StatisticsDashboard: React.FC = () => {
                   {getStatusText(selectedSale.status)}
                 </span>
               </div>
+            </div>
+
+            <div className="border-t border-slate-700/50 pt-4">
+              <h4 className="text-sm font-medium text-slate-400 mb-4 flex items-center gap-2">
+                <Package className="w-4 h-4" />
+                关联物料信息
+              </h4>
+              {selectedSaleMaterial ? (
+                <div className="bg-slate-800/30 rounded-lg p-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">物料名称</p>
+                      <p className="text-slate-200 font-medium">{selectedSaleMaterial.type}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">物料类别</p>
+                      <p className="text-slate-200">{getMaterialCategoryText(selectedSaleMaterial.category)}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">当前库存状态</p>
+                      <span className={`inline-block px-2 py-1 text-xs rounded ${
+                        selectedSaleMaterial.status === 'in_stock' ? 'bg-primary-500/20 text-primary-400' :
+                        selectedSaleMaterial.status === 'sold' ? 'bg-success-500/20 text-success-400' :
+                        'bg-warning-500/20 text-warning-400'
+                      }`}>
+                        {getStatusText(selectedSaleMaterial.status)}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">存放仓库</p>
+                      <p className="text-slate-200 flex items-center gap-1">
+                        <Warehouse className="w-3.5 h-3.5 text-slate-400" />
+                        {selectedSaleMaterial.warehouse}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">当前库存重量</p>
+                      <p className="text-slate-200 font-medium">{formatWeight(selectedSaleMaterial.weight, selectedSaleMaterial.unit)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">物料单价</p>
+                      <p className="text-slate-200 font-medium text-success-400">{formatCurrency(selectedSaleMaterial.price)}/{selectedSaleMaterial.unit}</p>
+                    </div>
+                  </div>
+                  <div className="border-t border-slate-700/50 pt-4">
+                    <p className="text-xs text-slate-500 mb-1">来源船舶</p>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 bg-primary-500/20 rounded flex items-center justify-center">
+                        <Ship className="w-4 h-4 text-primary-400" />
+                      </div>
+                      <div>
+                        <p className="text-slate-200 font-medium">{selectedSaleShipName}</p>
+                        <p className="text-xs text-slate-500">Ship ID: {selectedSaleMaterial.shipId}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-800/30 rounded-lg p-4 text-center text-slate-500">
+                  未找到关联物料信息 (Material ID: {selectedSale.materialId})
+                </div>
+              )}
             </div>
 
             <div className="border-t border-slate-700/50 pt-4">
@@ -851,10 +1063,40 @@ export const StatisticsDashboard: React.FC = () => {
             </div>
 
             <div className="border-t border-slate-700/50 pt-4">
-              <h4 className="text-sm font-medium text-slate-400 mb-4">发票信息</h4>
-              <div>
-                <p className="text-xs text-slate-500 mb-1">发票号</p>
-                <p className="text-slate-200 font-mono">{selectedSale.invoiceNumber || '未开具'}</p>
+              <h4 className="text-sm font-medium text-slate-400 mb-4 flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                发票信息
+              </h4>
+              <div className="bg-slate-800/30 rounded-lg p-4 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-xs text-slate-500 mb-1">发票号码</p>
+                    <p className="text-slate-200 font-mono">
+                      {selectedSale.invoiceNumber || <span className="text-slate-500">未开具</span>}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 mb-1">开票日期</p>
+                    <p className="text-slate-200">
+                      {selectedSale.invoiceDate || <span className="text-slate-500">未开票</span>}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 mb-1">开票状态</p>
+                    {selectedSale.invoiceStatus ? (
+                      <span className={`inline-block px-2 py-1 text-xs rounded ${
+                        selectedSale.invoiceStatus === 'received' ? 'bg-success-500/20 text-success-400' :
+                        selectedSale.invoiceStatus === 'sent' ? 'bg-primary-500/20 text-primary-400' :
+                        selectedSale.invoiceStatus === 'issued' ? 'bg-warning-500/20 text-warning-400' :
+                        'bg-slate-500/20 text-slate-400'
+                      }`}>
+                        {getStatusText(selectedSale.invoiceStatus)}
+                      </span>
+                    ) : (
+                      <span className="text-slate-500">未开具</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 

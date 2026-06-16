@@ -92,6 +92,8 @@ export interface Sale {
   saleDate: string;
   status: 'pending' | 'shipped' | 'completed' | 'cancelled';
   invoiceNumber?: string;
+  invoiceDate?: string;
+  invoiceStatus?: 'not_issued' | 'issued' | 'sent' | 'received';
 }
 
 export interface SafetyPermit {
@@ -123,6 +125,13 @@ export interface GasDetection {
   detector: string;
 }
 
+export interface EnvMonitoringTimelineItem {
+  time: string;
+  action: string;
+  operator: string;
+  note?: string;
+}
+
 export interface EnvMonitoring {
   id: string;
   shipId?: string;
@@ -137,6 +146,9 @@ export interface EnvMonitoring {
   handled?: boolean;
   handledAt?: string;
   handledBy?: string;
+  handledNote?: string;
+  handleResult?: string;
+  timeline?: EnvMonitoringTimelineItem[];
 }
 
 export interface TreatmentRecord {
